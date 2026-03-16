@@ -1,0 +1,865 @@
+---
+title: "04 — Hot/Cold × p16 Overlap Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+Core analysis notebook: tests the relationship between p16/senescence status and
+hot/cold immune phenotype.
+
+**Hypotheses tested:**
+
+1. SASP-high samples → hot (pro-inflammatory cytokines drive TIL infiltration)
+2. CDKN2A-deleted samples → cold (loss of senescence → loss of SASP signaling)
+3. Relationship is tumor-type specific
+
+```{r setup, message=FALSE, warning=FALSE}
+library(arrow)
+library(dplyr)
+library(ggplot2)
+library(rstatix)
+library(pheatmap)
+
+DATA    <- "../data"
+FIGURES <- normalizePath("../figures", mustWork = FALSE)
+dir.create(FIGURES, showWarnings = FALSE)
+```
+
+## 1. Load & Merge Data
+
+```{r load-data}
+immune <- read_parquet(file.path(DATA, "sample_immune_labels.parquet")) |>
+  rename(sample_id = `__index_level_0__`)
+senes  <- read_parquet(file.path(DATA, "sample_senescence.parquet")) |>
+  rename(sample_id = `__index_level_0__`)
+
+clin <- read.table(
+  file.path(DATA, "tcga_clinical_survival.tsv"),
+  sep = "\t", header = TRUE, row.names = 1, stringsAsFactors = FALSE
+)
+
+master <- inner_join(immune, senes, by = "sample_id") |>
+  left_join(
+    clin[, "age_at_initial_pathologic_diagnosis", drop = FALSE] |>
+      tibble::rownames_to_column("sample_id"),
+    by = "sample_id"
+  ) |>
+  rename(age = age_at_initial_pathologic_diagnosis)
+
+cat("Master table:", nrow(master), "rows,", ncol(master), "cols\n")
+cat("Columns:", paste(colnames(master), collapse = ", "), "\n")
+
+# Tumor types with ≥100 samples — used for confirmatory primary tests
+# (pan-cancer analyses still use all types)
+confirmatory_types <- master |>
+  count(tumor_type) |>
+  filter(n >= 100) |>
+  pull(tumor_type)
+message(sprintf("Confirmatory set: %d tumor types with ≥100 samples (of %d total)",
+                length(confirmatory_types), n_distinct(master$tumor_type)))
+master_confirmatory <- master |> filter(tumor_type %in% confirmatory_types)
+```
+
+> **Pre-specified primary hypotheses**
+> H1: ρ(CDKN2A_expr, IFN-γ) > 0 — tested in §2 below
+> H2: SASP higher in hot tumors — tested in §5
+> H3: CDKN2A deletion enriched in cold — tested in §4
+> H4: p16-high hot tumors best OS — tested in notebook 05 §4
+> H5: CDKN2A_expr independent OS predictor (age-adjusted) — notebook 05 §6
+> All other analyses in this notebook are **exploratory**.
+
+```{r testing-strategy}
+# Primary hypotheses H1-H5: Bonferroni-corrected threshold (5 tests, α=0.05)
+ALPHA_PRIMARY    <- 0.05 / 5   # = 0.01
+# Exploratory analyses: BH FDR, reported separately
+ALPHA_EXPLORATORY <- 0.05
+message(sprintf("Primary α = %.3f (Bonferroni, 5 pre-specified hypotheses)", ALPHA_PRIMARY))
+message(sprintf("Exploratory α = %.2f (BH FDR)", ALPHA_EXPLORATORY))
+```
+
+## 2. CDKN2A Expression vs IFN-γ Score (Scatter)
+
+```{r scatter-pancancer}
+scatter_data <- master |>
+  select(CDKN2A_expr, ifng_score, tumor_type) |>
+  filter(!is.na(CDKN2A_expr), !is.na(ifng_score))
+
+# PRIMARY TEST (H1): compare p to ALPHA_PRIMARY
+# Using master_confirmatory (n≥100 per type) for primary hypothesis test
+scatter_confirmatory <- master_confirmatory |>
+  select(CDKN2A_expr, ifng_score, tumor_type) |>
+  filter(!is.na(CDKN2A_expr), !is.na(ifng_score))
+ct_confirmatory <- cor.test(scatter_confirmatory$CDKN2A_expr, scatter_confirmatory$ifng_score,
+                            method = "spearman", exact = FALSE)
+cat(sprintf("Pan-cancer Spearman (confirmatory set): rho=%.3f, p=%.2e\n",
+            ct_confirmatory$estimate, ct_confirmatory$p.value))
+
+ct <- cor.test(scatter_data$CDKN2A_expr, scatter_data$ifng_score,
+               method = "spearman", exact = FALSE)
+cat(sprintf("Pan-cancer Spearman (full cohort): rho=%.3f, p=%.2e\n", ct$estimate, ct$p.value))
+
+p <- ggplot(scatter_data, aes(x = CDKN2A_expr, y = ifng_score)) +
+  geom_point(alpha = 0.3, size = 0.8, colour = "steelblue") +
+  labs(
+    x     = "CDKN2A expression (log2)",
+    y     = "IFN-\u03b3 signature score",
+    title = sprintf("CDKN2A vs IFN-\u03b3 score (\u03c1=%.2f, p=%.1e)",
+                    ct$estimate, ct$p.value)
+  ) +
+  theme_bw()
+
+ggsave(file.path(FIGURES, "cdkn2a_vs_ifng_scatter.png"),
+       plot = p, width = 7, height = 6, dpi = 150)
+p
+```
+
+## 3. Spearman Correlations: Senescence Scores × Immune Scores
+
+### Pan-cancer correlation table
+
+```{r spearman-pancancer}
+senes_cols  <- intersect(
+  c("CDKN2A_expr", "SASP", "Senescence_Effectors",
+    "senescence_up", "reactome_senescence",
+    "senmayo", "hallmark_p53", "gobp_senescence", "senescence_dn",
+    "CDKN1A_expr", "SERPINE1_expr", "GDF15_expr", "LMNB1_expr"),
+  colnames(master)
+)
+immune_cols <- intersect(c("ifng_score", "cd8_fraction"), colnames(master))
+
+# Build tidy correlation table with BH FDR correction
+cor_long <- master |>
+  select(all_of(c(senes_cols, immune_cols))) |>
+  cor_test(vars  = all_of(senes_cols),
+           vars2 = all_of(immune_cols),
+           method = "spearman") |>
+  adjust_pvalue(method = "BH") |>
+  add_significance()
+
+print(cor_long)
+
+# Wide rho matrix for heatmap
+rho_mat <- cor_long |>
+  select(var1, var2, cor) |>
+  tidyr::pivot_wider(names_from = var2, values_from = cor) |>
+  tibble::column_to_rownames("var1") |>
+  as.matrix()
+
+png(file.path(FIGURES, "spearman_heatmap_pancancer.png"),
+    width = 700, height = 500, res = 150)
+pheatmap(rho_mat,
+         display_numbers = TRUE,
+         number_format   = "%.2f",
+         color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+         breaks           = seq(-0.6, 0.6, length.out = 101),
+         main             = "Spearman \u03c1: Senescence vs Immune (pan-cancer)",
+         fontsize         = 11)
+dev.off()
+
+pheatmap(rho_mat,
+         display_numbers = TRUE,
+         number_format   = "%.2f",
+         color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+         breaks           = seq(-0.6, 0.6, length.out = 101),
+         main             = "Spearman \u03c1: Senescence vs Immune (pan-cancer)",
+         fontsize         = 11)
+```
+
+### Per-tumor-type CDKN2A vs IFN-γ
+
+```{r spearman-per-type}
+# EXPLORATORY: interpret with BH FDR, not primary threshold
+if ("tumor_type" %in% colnames(master)) {
+  per_type <- master |>
+    filter(!is.na(CDKN2A_expr), !is.na(ifng_score)) |>
+    group_by(tumor_type) |>
+    # Minimum n=30 per group for stable Spearman estimates
+    filter(n() >= 30) |>
+    summarise(
+      rho  = cor.test(CDKN2A_expr, ifng_score,
+                      method = "spearman", exact = FALSE)$estimate,
+      pval = cor.test(CDKN2A_expr, ifng_score,
+                      method = "spearman", exact = FALSE)$p.value,
+      n    = n(),
+      .groups = "drop"
+    ) |>
+    mutate(
+      padj  = p.adjust(pval, method = "BH"),
+      sig   = padj < 0.05
+    ) |>
+    arrange(desc(rho))
+
+  print(per_type)
+
+  p2 <- ggplot(per_type, aes(x = reorder(tumor_type, rho),
+                              y = rho, fill = rho > 0)) +
+    geom_col() +
+    scale_fill_manual(values = c("TRUE" = "#e74c3c", "FALSE" = "#3498db"),
+                      guide = "none") +
+    geom_hline(yintercept = 0, linewidth = 0.5) +
+    coord_flip() +
+    labs(
+      x     = NULL,
+      y     = "Spearman \u03c1 (CDKN2A vs IFN-\u03b3)",
+      title = "Per-tumor-type correlation: CDKN2A expression vs immune hotness"
+    ) +
+    theme_bw()
+
+  ggsave(file.path(FIGURES, "cdkn2a_ifng_corr_by_type.png"),
+         plot = p2, width = 8, height = 10, dpi = 150)
+  p2
+}
+```
+
+## 4. CDKN2A Deletion vs Hot/Cold (Chi-squared)
+
+```{r chi-squared}
+# PRIMARY TEST (H3): compare p to ALPHA_PRIMARY
+if ("cdkn2a_deleted" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
+  ct_tbl <- table(
+    deletion = ifelse(master$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
+    immune   = master$hot_cold
+  )
+  print(ct_tbl)
+
+  chi_res <- chisq.test(ct_tbl)
+  cat(sprintf("\nChi-squared test (full cohort): chi2=%.2f, p=%.2e, df=%d\n",
+              chi_res$statistic, chi_res$p.value, chi_res$parameter))
+
+  # Using master_confirmatory (n≥100 per type) for primary hypothesis test
+  ct_tbl_conf <- table(
+    deletion = ifelse(master_confirmatory$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
+    immune   = master_confirmatory$hot_cold
+  )
+  chi_res_conf <- chisq.test(ct_tbl_conf)
+  cat(sprintf("Chi-squared test (confirmatory set): chi2=%.2f, p=%.2e, df=%d\n",
+              chi_res_conf$statistic, chi_res_conf$p.value, chi_res_conf$parameter))
+
+  # Hot fraction by deletion status
+  hot_frac <- master |>
+    group_by(cdkn2a_deleted) |>
+    summarise(hot_fraction = mean(hot_cold == "hot", na.rm = TRUE), .groups = "drop")
+  print(hot_frac)
+}
+```
+
+## 5. SASP Score Distribution: Hot vs Cold (Mann-Whitney U)
+
+```{r mann-whitney}
+# PRIMARY TEST (H2): compare p to ALPHA_PRIMARY
+if ("SASP" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
+  hot_sasp  <- master |> filter(hot_cold == "hot",  !is.na(SASP)) |> pull(SASP)
+  cold_sasp <- master |> filter(hot_cold == "cold", !is.na(SASP)) |> pull(SASP)
+
+  mw <- wilcox.test(hot_sasp, cold_sasp, alternative = "two.sided", exact = FALSE)
+  cat(sprintf("Mann-Whitney U: W=%.0f, p=%.2e\n", mw$statistic, mw$p.value))
+  cat(sprintf("Median SASP — hot: %.3f,  cold: %.3f\n",
+              median(hot_sasp), median(cold_sasp)))
+
+  plot_df <- master |>
+    filter(!is.na(SASP), !is.na(hot_cold)) |>
+    select(SASP, hot_cold)
+
+  p3 <- ggplot(plot_df, aes(x = SASP, fill = hot_cold)) +
+    geom_histogram(bins = 60, alpha = 0.6, position = "identity") +
+    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db")) +
+    labs(
+      x     = "SASP ssGSEA score",
+      title = sprintf("SASP score distribution: hot vs cold tumors\n(p=%.2e)", mw$p.value),
+      fill  = NULL
+    ) +
+    theme_bw()
+
+  ggsave(file.path(FIGURES, "sasp_score_hot_cold.png"),
+         plot = p3, width = 7, height = 5, dpi = 150)
+  p3
+}
+```
+
+## 6. New Expression Marker Correlations vs Immune Scores
+
+```{r new-marker-correlations}
+new_expr_cols <- intersect(
+  c("CDKN1A_expr", "SERPINE1_expr", "GDF15_expr", "LMNB1_expr"),
+  colnames(master)
+)
+immune_cols <- intersect(c("ifng_score", "cd8_fraction"), colnames(master))
+
+if (length(new_expr_cols) > 0 && length(immune_cols) > 0) {
+  new_cor <- master |>
+    select(all_of(c(new_expr_cols, immune_cols))) |>
+    cor_test(vars  = all_of(new_expr_cols),
+             vars2 = all_of(immune_cols),
+             method = "spearman") |>
+    adjust_pvalue(method = "BH") |>
+    add_significance()
+
+  print(new_cor)
+
+  # Heatmap of new markers
+  new_rho_mat <- new_cor |>
+    select(var1, var2, cor) |>
+    tidyr::pivot_wider(names_from = var2, values_from = cor) |>
+    tibble::column_to_rownames("var1") |>
+    as.matrix()
+
+  png(file.path(FIGURES, "spearman_heatmap_new_markers.png"),
+      width = 700, height = 500, res = 150)
+  pheatmap(new_rho_mat,
+           display_numbers = TRUE,
+           number_format   = "%.2f",
+           color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+           breaks           = seq(-0.6, 0.6, length.out = 101),
+           main             = "Spearman \u03c1: New Senescence Markers vs Immune (pan-cancer)",
+           fontsize         = 11)
+  dev.off()
+
+  pheatmap(new_rho_mat,
+           display_numbers = TRUE,
+           number_format   = "%.2f",
+           color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+           breaks           = seq(-0.6, 0.6, length.out = 101),
+           main             = "Spearman \u03c1: New Senescence Markers vs Immune (pan-cancer)",
+           fontsize         = 11)
+} else {
+  cat("New expression marker columns not found — re-run notebook 03 first.\n")
+}
+```
+
+## 7. Senescence Gene Alteration Landscape — Hot vs Cold
+
+```{r genomic-alterations}
+library(purrr)
+
+# Map display label → column in master
+# Prefer _altered (del|mut) where available, fall back to _deleted or _mutated
+alt_gene_map <- list(
+  CDKN2A = "cdkn2a_altered",
+  TP53   = "tp53_altered",
+  RB1    = "rb1_altered",
+  ATM    = "atm_altered",
+  PTEN   = "pten_altered",
+  CDKN1A = "cdkn1a_deleted",
+  CDKN2B = "cdkn2b_deleted",
+  CDKN2C = "cdkn2c_deleted"
+)
+
+# Build tidy summary: % altered in hot vs cold per gene, with chi-squared p
+alt_summary <- map_dfr(names(alt_gene_map), function(gene) {
+  col <- alt_gene_map[[gene]]
+  if (!col %in% colnames(master)) return(NULL)
+
+  sub <- master |> filter(!is.na(.data[[col]]), !is.na(hot_cold))
+  if (nrow(sub) < 10) return(NULL)
+
+  ct_tbl <- table(immune = sub$hot_cold,
+                  altered = sub[[col]])
+  chi_p <- tryCatch(
+    chisq.test(ct_tbl)$p.value,
+    error = function(e) NA_real_
+  )
+
+  sub |>
+    group_by(hot_cold) |>
+    summarise(
+      gene        = gene,
+      pct_altered = 100 * mean(.data[[col]], na.rm = TRUE),
+      n           = n(),
+      .groups     = "drop"
+    ) |>
+    mutate(chi_p = chi_p)
+})
+
+if (nrow(alt_summary) > 0) {
+  print(alt_summary |> select(gene, hot_cold, pct_altered, n, chi_p) |> arrange(gene))
+
+  # ── Grouped bar chart ─────────────────────────────────────────────────────
+  # Order genes by overall alteration rate descending
+  gene_order <- alt_summary |>
+    group_by(gene) |>
+    summarise(mean_pct = mean(pct_altered), .groups = "drop") |>
+    arrange(desc(mean_pct)) |>
+    pull(gene)
+
+  # Chi-squared significance label for annotation
+  chi_labels <- alt_summary |>
+    distinct(gene, chi_p) |>
+    mutate(
+      sig = case_when(
+        chi_p < 0.001 ~ "***",
+        chi_p < 0.01  ~ "**",
+        chi_p < 0.05  ~ "*",
+        TRUE          ~ ""
+      )
+    )
+
+  p7 <- ggplot(
+    alt_summary |> mutate(gene = factor(gene, levels = gene_order)),
+    aes(x = gene, y = pct_altered, fill = hot_cold)
+  ) +
+    geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+    geom_text(
+      data = chi_labels |> mutate(gene = factor(gene, levels = gene_order)),
+      aes(x = gene, y = -1.5, label = sig),
+      inherit.aes = FALSE, size = 4, fontface = "bold", colour = "grey30"
+    ) +
+    scale_fill_manual(
+      values = c("hot" = "#e74c3c", "cold" = "#3498db"),
+      name   = "Immune\nphenotype"
+    ) +
+    labs(
+      x     = NULL,
+      y     = "% of samples altered",
+      title = "Senescence gene alteration rates: hot vs cold tumors",
+      caption = "Alteration = deletion and/or mutation; * p<0.05, ** p<0.01, *** p<0.001 (chi-squared)"
+    ) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1, face = "bold"))
+
+  ggsave(file.path(FIGURES, "alteration_hot_cold_grouped_bar.png"),
+         plot = p7, width = 9, height = 5, dpi = 150)
+  p7
+
+  # ── Heatmap: % altered per gene × tumor type, split by hot/cold ──────────
+  # Compute per-type rates for hot tumors only (cold shown as facet or separate)
+  type_alt <- map_dfr(names(alt_gene_map), function(gene) {
+    col <- alt_gene_map[[gene]]
+    if (!col %in% colnames(master)) return(NULL)
+    master |>
+      filter(!is.na(.data[[col]]), !is.na(hot_cold), !is.na(tumor_type)) |>
+      group_by(tumor_type, hot_cold) |>
+      summarise(gene = gene,
+                pct_altered = 100 * mean(.data[[col]], na.rm = TRUE),
+                n = n(), .groups = "drop")
+  })
+
+  if (nrow(type_alt) > 0) {
+    p7b <- ggplot(
+      type_alt |> mutate(gene = factor(gene, levels = gene_order)),
+      aes(x = gene, y = tumor_type, fill = pct_altered)
+    ) +
+      facet_wrap(~ hot_cold, ncol = 2) +
+      geom_tile(colour = "white", linewidth = 0.3) +
+      scale_fill_gradient(low = "white", high = "#c0392b",
+                          name = "% altered", limits = c(0, NA)) +
+      labs(
+        x     = NULL,
+        y     = NULL,
+        title = "Senescence gene alteration rate by tumor type and immune phenotype"
+      ) +
+      theme_bw() +
+      theme(
+        axis.text.x  = element_text(angle = 35, hjust = 1, face = "bold"),
+        strip.text   = element_text(face = "bold", size = 11)
+      )
+
+    ggsave(file.path(FIGURES, "alteration_hot_cold_heatmap.png"),
+           plot = p7b, width = 14, height = 10, dpi = 150)
+    p7b
+  }
+} else {
+  cat("No alteration columns found — re-run notebooks 01 and 03 first.\n")
+}
+```
+
+## 8. Age & Senescence Diagnostics
+
+### 8a. Age by tumor type
+
+```{r age-by-tumor-type}
+if ("age" %in% colnames(master) && "tumor_type" %in% colnames(master)) {
+  age_type <- master |>
+    filter(!is.na(age), !is.na(tumor_type)) |>
+    group_by(tumor_type) |>
+    mutate(median_age = median(age, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(tumor_type = reorder(tumor_type, median_age))
+
+  p8a <- ggplot(age_type, aes(x = tumor_type, y = age)) +
+    geom_boxplot(fill = "steelblue", alpha = 0.7, outlier.size = 0.5) +
+    coord_flip() +
+    labs(
+      x     = NULL,
+      y     = "Age at diagnosis (years)",
+      title = "Patient age distribution by tumor type"
+    ) +
+    theme_bw()
+
+  ggsave(file.path(FIGURES, "age_by_tumor_type.png"),
+         plot = p8a, width = 8, height = 10, dpi = 150)
+  p8a
+} else {
+  cat("age or tumor_type column not found.\n")
+}
+```
+
+### 8b. Age by hot/cold immune phenotype
+
+```{r age-hot-cold}
+if ("age" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
+  age_hc <- master |> filter(!is.na(age), !is.na(hot_cold))
+
+  mw_age <- wilcox.test(age ~ hot_cold, data = age_hc, exact = FALSE)
+  med_hot  <- median(age_hc$age[age_hc$hot_cold == "hot"],  na.rm = TRUE)
+  med_cold <- median(age_hc$age[age_hc$hot_cold == "cold"], na.rm = TRUE)
+  cat(sprintf("Median age — hot: %.1f,  cold: %.1f\n", med_hot, med_cold))
+  cat(sprintf("Mann-Whitney U: W=%.0f, p=%.2e\n", mw_age$statistic, mw_age$p.value))
+
+  p8b <- ggplot(age_hc, aes(x = hot_cold, y = age, fill = hot_cold)) +
+    geom_violin(alpha = 0.6, trim = FALSE) +
+    geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.9) +
+    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db"), guide = "none") +
+    labs(
+      x     = NULL,
+      y     = "Age at diagnosis (years)",
+      title = sprintf("Age by immune phenotype (Mann-Whitney p=%.2e)", mw_age$p.value)
+    ) +
+    theme_bw()
+
+  ggsave(file.path(FIGURES, "age_hot_cold.png"),
+         plot = p8b, width = 5, height = 5, dpi = 150)
+  p8b
+} else {
+  cat("age or hot_cold column not found.\n")
+}
+```
+
+### 8c. Age × senescence Spearman correlations
+
+```{r age-senescence-correlations}
+# EXPLORATORY: interpret with BH FDR, not primary threshold
+age_senes_cols <- intersect(
+  c("CDKN2A_expr", "SASP", "senmayo", "senescence_up", "reactome_senescence",
+    "CDKN1A_expr", "SERPINE1_expr"),
+  colnames(master)
+)
+
+if ("age" %in% colnames(master) && length(age_senes_cols) > 0) {
+  age_cor <- master |>
+    select(age, all_of(age_senes_cols)) |>
+    filter(!is.na(age)) |>
+    cor_test(vars  = "age",
+             vars2 = all_of(age_senes_cols),
+             method = "spearman") |>
+    adjust_pvalue(method = "BH") |>
+    add_significance() |>
+    arrange(desc(abs(cor)))
+
+  print(age_cor)
+
+  # Heatmap (single row)
+  age_rho_mat <- age_cor |>
+    select(var1, var2, cor) |>
+    tidyr::pivot_wider(names_from = var2, values_from = cor) |>
+    tibble::column_to_rownames("var1") |>
+    as.matrix()
+
+  png(file.path(FIGURES, "age_senescence_correlations.png"),
+      width = 900, height = 300, res = 150)
+  pheatmap(age_rho_mat,
+           display_numbers = TRUE,
+           number_format   = "%.2f",
+           color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+           breaks           = seq(-0.4, 0.4, length.out = 101),
+           main             = "Spearman \u03c1: Patient age vs senescence markers",
+           fontsize         = 11,
+           cluster_rows     = FALSE)
+  dev.off()
+
+  pheatmap(age_rho_mat,
+           display_numbers = TRUE,
+           number_format   = "%.2f",
+           color            = colorRampPalette(c("#2166ac","white","#d6604d"))(100),
+           breaks           = seq(-0.4, 0.4, length.out = 101),
+           main             = "Spearman \u03c1: Patient age vs senescence markers",
+           fontsize         = 11,
+           cluster_rows     = FALSE)
+} else {
+  cat("age column or senescence score columns not found.\n")
+}
+```
+
+### 8d. Summary table by tumor type
+
+```{r age-summary-table}
+if ("age" %in% colnames(master) && "tumor_type" %in% colnames(master)) {
+  age_summary <- master |>
+    filter(!is.na(tumor_type)) |>
+    group_by(tumor_type) |>
+    summarise(
+      n            = n(),
+      median_age   = median(age, na.rm = TRUE),
+      pct_hot      = 100 * mean(hot_cold == "hot", na.rm = TRUE),
+      median_CDKN2A = median(CDKN2A_expr, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(desc(pct_hot))
+
+  print(age_summary)
+} else {
+  cat("age or tumor_type column not found.\n")
+}
+```
+
+## 9. CDKN2A Deletion × Expression 4-Group Analysis
+
+```{r cdkn2a-4group}
+# EXPLORATORY: interpret with BH FDR, not primary threshold
+if ("cdkn2a_deleted" %in% colnames(master) && "CDKN2A_expr" %in% colnames(master)) {
+  # Within-type median of CDKN2A expression
+  master <- master |>
+    group_by(tumor_type) |>
+    mutate(cdkn2a_expr_high = CDKN2A_expr >= median(CDKN2A_expr, na.rm = TRUE)) |>
+    ungroup()
+
+  master <- master |>
+    mutate(cdkn2a_4group = case_when(
+      cdkn2a_deleted & !cdkn2a_expr_high  ~ "del-low",
+      cdkn2a_deleted &  cdkn2a_expr_high  ~ "del-high",
+     !cdkn2a_deleted & !cdkn2a_expr_high  ~ "intact-low",
+     !cdkn2a_deleted &  cdkn2a_expr_high  ~ "intact-high",
+      TRUE ~ NA_character_
+    ))
+
+  cat("CDKN2A 4-group sizes:\n")
+  print(table(master$cdkn2a_4group))
+
+  # Hot fraction by 4-group
+  hot_4g <- master |>
+    filter(!is.na(cdkn2a_4group), !is.na(hot_cold)) |>
+    group_by(cdkn2a_4group) |>
+    summarise(
+      n            = n(),
+      pct_hot      = 100 * mean(hot_cold == "hot", na.rm = TRUE),
+      mean_ifng    = mean(ifng_score, na.rm = TRUE),
+      mean_SASP    = mean(SASP, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(desc(pct_hot))
+
+  print(hot_4g)
+
+  # Chi-squared: 4-group vs hot/cold
+  ct4 <- table(
+    group = master$cdkn2a_4group[!is.na(master$cdkn2a_4group)],
+    immune = master$hot_cold[!is.na(master$cdkn2a_4group)]
+  )
+  chi4 <- chisq.test(ct4)
+  cat(sprintf("\nChi-squared (4-group vs hot/cold): chi2=%.2f, p=%.2e, df=%d\n",
+              chi4$statistic, chi4$p.value, chi4$parameter))
+
+  # Plot: hot fraction by 4-group
+  group_colours <- c(
+    "del-low"     = "#c0392b",
+    "del-high"    = "#e08080",
+    "intact-low"  = "#85c1e9",
+    "intact-high" = "#1a5276"
+  )
+
+  p9 <- ggplot(
+    master |> filter(!is.na(cdkn2a_4group), !is.na(hot_cold)),
+    aes(x = cdkn2a_4group, fill = hot_cold)
+  ) +
+    geom_bar(position = "fill") +
+    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db")) +
+    scale_x_discrete(limits = c("del-low", "del-high", "intact-low", "intact-high")) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(
+      x     = "CDKN2A status",
+      y     = "Fraction",
+      title = "Immune phenotype by CDKN2A deletion × expression status",
+      subtitle = sprintf("Chi-squared p=%.2e", chi4$p.value),
+      fill  = NULL
+    ) +
+    theme_bw()
+
+  ggsave(file.path(FIGURES, "cdkn2a_4group_immune.png"),
+         plot = p9, width = 7, height = 5, dpi = 150)
+  p9
+} else {
+  cat("cdkn2a_deleted or CDKN2A_expr not found — re-run notebooks 01–03.\n")
+}
+```
+
+```{r cdkn2a-purity-quartile}
+# ── 9b. CDKN2A expression vs deletion status by purity quartile ──────────────
+# Tests whether "high-expression + deleted" samples are purity artefacts
+if ("cdkn2a_deleted" %in% names(master) && "tumor_purity" %in% names(master)) {
+  pq_df <- master |>
+    filter(!is.na(cdkn2a_deleted), !is.na(tumor_purity), !is.na(CDKN2A_expr)) |>
+    mutate(
+      del_status = ifelse(cdkn2a_deleted, "Deleted", "Intact"),
+      purity_q   = ntile(tumor_purity, 4),
+      purity_label = paste0("Purity Q", purity_q)
+    )
+
+  p_purity_del <- ggplot(pq_df, aes(x = del_status, y = CDKN2A_expr,
+                                     fill = del_status)) +
+    geom_boxplot(outlier.size = 0.5, alpha = 0.8) +
+    facet_wrap(~ purity_label, nrow = 1) +
+    scale_fill_manual(values = c("Deleted" = "#e74c3c", "Intact" = "#3498db")) +
+    labs(
+      title = "CDKN2A expression vs deletion status by purity quartile",
+      subtitle = "If high-expression+deleted persists in high-purity tumours, it is biological not artefactual",
+      x = "", y = "CDKN2A expression (log2)", fill = ""
+    ) +
+    theme_bw() +
+    theme(legend.position = "none", strip.background = element_blank())
+
+  ggsave(file.path(FIGURES, "cdkn2a_expr_vs_del_by_purity.png"),
+         p_purity_del, width = 10, height = 4, dpi = 150)
+  print(p_purity_del)
+} else {
+  message("Skipping CDKN2A purity quartile plot: required columns missing.")
+}
+```
+
+## 10. Thorsson Immune Subtype (C1–C6) × Senescence
+
+```{r immune-subtype-crosstab}
+if ("immune_subtype" %in% colnames(master)) {
+  cat("Immune subtype distribution:\n")
+  print(table(master$immune_subtype, useNA = "ifany"))
+
+  # Cross-tab: immune subtype × hot/cold
+  ct_sub <- table(
+    subtype = master$immune_subtype[!is.na(master$immune_subtype)],
+    immune  = master$hot_cold[!is.na(master$immune_subtype)]
+  )
+  cat("\nImmune subtype × hot/cold:\n")
+  print(ct_sub)
+  chi_sub <- chisq.test(ct_sub)
+  cat(sprintf("Chi-squared: chi2=%.2f, p=%.2e\n", chi_sub$statistic, chi_sub$p.value))
+
+  # ── 10b. Cramér's V: immune subtype × hot/cold concordance ──────────────────
+  if ("immune_subtype" %in% names(master)) {
+    ct_tab <- table(master$hot_cold, master$immune_subtype)
+    chi2   <- chisq.test(ct_tab)
+    n      <- sum(ct_tab)
+    k      <- min(nrow(ct_tab), ncol(ct_tab))
+    cramers_v <- sqrt(chi2$statistic / (n * (k - 1)))
+    message(sprintf("Cramér's V (hot/cold × immune subtype): %.3f  (χ²=%.1f, df=%d, p=%.2e)",
+                    cramers_v, chi2$statistic, chi2$parameter, chi2$p.value))
+
+    # Proportion table for interpretation
+    prop_tab <- prop.table(ct_tab, margin = 2)  # column proportions
+    cat("\nHot fraction within each Thorsson subtype:\n")
+    print(round(prop_tab["hot", ] * 100, 1))
+
+    cat(sprintf(
+      "\nInterpretation: Cramér's V = %.2f suggests %s concordance between\n",
+      cramers_v,
+      ifelse(cramers_v > 0.5, "strong", ifelse(cramers_v > 0.3, "moderate", "weak"))
+    ))
+    cat("hot/cold and Thorsson immune subtypes.\n")
+    cat("If V > 0.5, the two classifications are largely redundant.\n")
+  }
+
+  # CDKN2A expression by immune subtype
+  sub_senes <- master |>
+    filter(!is.na(immune_subtype), !is.na(CDKN2A_expr)) |>
+    group_by(immune_subtype) |>
+    summarise(
+      n            = n(),
+      median_CDKN2A = median(CDKN2A_expr, na.rm = TRUE),
+      median_SASP   = median(SASP, na.rm = TRUE),
+      pct_hot       = 100 * mean(hot_cold == "hot", na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(immune_subtype)
+
+  print(sub_senes)
+
+  p10 <- ggplot(
+    master |> filter(!is.na(immune_subtype), !is.na(CDKN2A_expr)),
+    aes(x = immune_subtype, y = CDKN2A_expr, fill = immune_subtype)
+  ) +
+    geom_violin(alpha = 0.7, trim = FALSE) +
+    geom_boxplot(width = 0.12, outlier.shape = NA, fill = "white") +
+    labs(
+      x     = "Thorsson immune subtype",
+      y     = "CDKN2A expression (log2)",
+      title = "CDKN2A expression by Thorsson immune subtype (C1–C6)"
+    ) +
+    theme_bw() +
+    theme(legend.position = "none")
+
+  ggsave(file.path(FIGURES, "cdkn2a_by_immune_subtype.png"),
+         plot = p10, width = 8, height = 5, dpi = 150)
+  p10
+} else {
+  cat("immune_subtype column not found — re-run notebooks 01–02.\n")
+}
+```
+
+## 11. Stromal Deconfounding of SASP Signal
+
+```{r stromal-deconfounding}
+# Test whether SASP → hot/cold association survives purity deconfounding.
+# Strategy: regress SASP on tumor_purity, use residuals as "purity-adjusted SASP"
+if ("tumor_purity" %in% colnames(master) && "SASP" %in% colnames(master)) {
+  sasp_purity_data <- master |>
+    filter(!is.na(SASP), !is.na(tumor_purity), !is.na(hot_cold))
+
+  # Correlation: purity vs SASP (stromal inflation check)
+  ct_pur <- cor.test(sasp_purity_data$tumor_purity, sasp_purity_data$SASP,
+                     method = "spearman", exact = FALSE)
+  cat(sprintf("Spearman ρ(purity, SASP): rho=%.3f, p=%.2e\n",
+              ct_pur$estimate, ct_pur$p.value))
+  cat("  (negative ρ expected: low purity = more stroma = higher SASP)\n\n")
+
+  # Partial correlation: SASP vs IFN-γ score, controlling for purity
+  # Implemented as residuals from purity regression
+  lm_sasp <- lm(SASP ~ tumor_purity, data = sasp_purity_data)
+  lm_ifng <- lm(ifng_score ~ tumor_purity, data = sasp_purity_data)
+  resid_sasp <- residuals(lm_sasp)
+  resid_ifng <- residuals(lm_ifng)
+
+  ct_partial <- cor.test(resid_sasp, resid_ifng, method = "spearman", exact = FALSE)
+  ct_raw     <- cor.test(sasp_purity_data$SASP, sasp_purity_data$ifng_score,
+                         method = "spearman", exact = FALSE)
+
+  cat(sprintf("Raw SASP vs IFN-γ:             rho=%.3f, p=%.2e\n",
+              ct_raw$estimate, ct_raw$p.value))
+  cat(sprintf("Purity-adjusted SASP vs IFN-γ: rho=%.3f, p=%.2e\n",
+              ct_partial$estimate, ct_partial$p.value))
+  cat("(If adjusted ρ remains significant, SASP signal is not purely stromal.)\n\n")
+
+  # Store purity-adjusted SASP
+  master$SASP_purity_adj <- NA_real_
+  master$SASP_purity_adj[!is.na(master$SASP) & !is.na(master$tumor_purity)] <- resid_sasp
+
+  # Mann-Whitney: adjusted SASP in hot vs cold
+  adj_hot  <- master$SASP_purity_adj[master$hot_cold == "hot"  & !is.na(master$SASP_purity_adj)]
+  adj_cold <- master$SASP_purity_adj[master$hot_cold == "cold" & !is.na(master$SASP_purity_adj)]
+  mw_adj <- wilcox.test(adj_hot, adj_cold, exact = FALSE)
+  cat(sprintf("Mann-Whitney (purity-adjusted SASP, hot vs cold): p=%.2e\n", mw_adj$p.value))
+  cat(sprintf("  Median adj SASP — hot: %.3f, cold: %.3f\n",
+              median(adj_hot, na.rm=TRUE), median(adj_cold, na.rm=TRUE)))
+
+} else {
+  cat("tumor_purity or SASP column not found — re-run notebooks 01–03.\n")
+}
+
+# ── 11b. Purity-adjusted IFN-γ score ─────────────────────────────────────────
+if ("tumor_purity" %in% names(master) && "ifng_score" %in% names(master)) {
+  purity_df <- master |> filter(!is.na(tumor_purity), !is.na(ifng_score))
+  # Residualise ifng_score on tumor_purity
+  lm_ifng <- lm(ifng_score ~ tumor_purity, data = purity_df)
+  purity_df <- purity_df |> mutate(ifng_resid = residuals(lm_ifng))
+
+  rho_raw  <- cor(purity_df$tumor_purity, purity_df$ifng_score, method = "spearman")
+  rho_adj  <- cor(purity_df$tumor_purity, purity_df$ifng_resid, method = "spearman")
+  message(sprintf("IFN-γ ~ purity: raw ρ = %.3f; after residualisation ρ ≈ %.3f", rho_raw, rho_adj))
+
+  # Mann-Whitney: hot vs cold using purity-adjusted IFN-γ
+  wt_ifng <- wilcox.test(ifng_resid ~ hot_cold, data = purity_df)
+  message(sprintf("Hot vs cold purity-adj IFN-γ: W = %.0f, p = %.3e", wt_ifng$statistic, wt_ifng$p.value))
+  cat("\nNote: Both SASP and IFN-γ scores are tested with and without purity adjustment above.\n")
+} else {
+  message("Skipping IFN-γ purity adjustment: tumor_purity or ifng_score not available.")
+}
+```

@@ -1,0 +1,716 @@
+---
+title: "05 — Survival Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+Tests whether the combination of hot/cold immune phenotype and p16/CDKN2A status
+predicts patient overall survival in TCGA.
+
+**Analyses:**
+
+1. Kaplan-Meier: hot vs cold
+2. Kaplan-Meier: 4-group (hot/cold × p16-high/low)
+3. Sensitivity: per-tumor-type log-rank
+4. Cox proportional hazards: adjusted for tumor type via strata
+
+```{r setup, message=FALSE, warning=FALSE}
+library(arrow)
+library(dplyr)
+library(ggplot2)
+library(survival)
+library(survminer)
+library(broom)
+library(jsonlite)
+library(cmprsk)
+
+DATA    <- "../data"
+FIGURES <- normalizePath("../figures", mustWork = FALSE)
+dir.create(FIGURES, showWarnings = FALSE)
+```
+
+## 1. Load & Merge Data
+
+```{r load-data}
+immune <- read_parquet(file.path(DATA, "sample_immune_labels.parquet")) |>
+  rename(sample_id = `__index_level_0__`)
+senes  <- read_parquet(file.path(DATA, "sample_senescence.parquet")) |>
+  rename(sample_id = `__index_level_0__`)
+
+# Clinical / survival data (Xena format)
+# Common survival columns: OS (1=deceased/0=censored), OS.time (days)
+clin <- read.table(
+  file.path(DATA, "tcga_clinical_survival.tsv"),
+  sep = "\t", header = TRUE, row.names = 1, stringsAsFactors = FALSE
+)
+cat("Clinical columns:", paste(colnames(clin), collapse = ", "), "\n")
+
+OS_COL  <- "OS"
+OST_COL <- "OS.time"
+
+# Include DSS and PFI endpoints alongside OS; take only columns that exist
+extra_clin_cols <- intersect(
+  c(OS_COL, OST_COL, "DSS", "DSS.time", "PFI", "PFI.time",
+    "age_at_initial_pathologic_diagnosis"),
+  colnames(clin)
+)
+
+master <- immune |>
+  inner_join(senes, by = "sample_id") |>
+  inner_join(
+    clin[, extra_clin_cols, drop = FALSE] |>
+      tibble::rownames_to_column("sample_id"),
+    by = "sample_id"
+  ) |>
+  rename(age = age_at_initial_pathologic_diagnosis) |>
+  filter(!is.na(.data[[OS_COL]]), !is.na(.data[[OST_COL]])) |>
+  mutate(
+    OS.time_years  = .data[[OST_COL]] / 365.25,
+    DSS.time_years = if ("DSS.time" %in% names(.)) DSS.time / 365.25 else NA_real_,
+    PFI.time_years = if ("PFI.time" %in% names(.)) PFI.time / 365.25 else NA_real_
+  )
+
+cat("Survival table:", nrow(master), "rows\n")
+cat("Endpoints available:",
+    paste(intersect(c("OS","DSS","PFI"), colnames(master)), collapse=", "), "\n")
+```
+
+## 1b. Join Tumor Purity and TMB
+
+```{r load-tmb-purity}
+# ── Tumor purity ──────────────────────────────────────────────────────────────
+purity_file <- file.path(DATA, "tcga_purity.tsv")
+if (file.exists(purity_file)) {
+  purity_df <- read.table(purity_file, sep = "\t", header = TRUE,
+                          stringsAsFactors = FALSE)
+  samp_col <- grep("sample|barcode", colnames(purity_df), ignore.case = TRUE, value = TRUE)[1]
+  pur_col  <- grep("purity|absolute", colnames(purity_df), ignore.case = TRUE, value = TRUE)[1]
+  if (!is.na(samp_col) && !is.na(pur_col)) {
+    pur_tbl <- purity_df[, c(samp_col, pur_col)]
+    colnames(pur_tbl) <- c("sample_id", "tumor_purity")
+    pur_tbl$sample_id  <- gsub("\\.", "-", pur_tbl$sample_id)
+    pur_tbl$sample_id  <- sub("^(TCGA-[^-]+-[^-]+-[0-9]{2}).*", "\\1", pur_tbl$sample_id)
+    pur_tbl$tumor_purity <- suppressWarnings(as.numeric(pur_tbl$tumor_purity))
+    master <- left_join(master, pur_tbl, by = "sample_id")
+    cat(sprintf("Purity joined: %d / %d samples (median=%.2f)\n",
+                sum(!is.na(master$tumor_purity)), nrow(master),
+                median(master$tumor_purity, na.rm = TRUE)))
+  } else {
+    cat("Could not identify purity/sample columns\n")
+    master$tumor_purity <- NA_real_
+  }
+} else {
+  cat("tcga_purity.tsv not found — run notebook 01 first\n")
+  master$tumor_purity <- NA_real_
+}
+
+# ── TMB ───────────────────────────────────────────────────────────────────────
+tmb_file <- file.path(DATA, "tcga_tmb.json")
+if (file.exists(tmb_file)) {
+  tmb_raw <- tryCatch(fromJSON(tmb_file), error = function(e) NULL)
+  if (!is.null(tmb_raw) && is.data.frame(tmb_raw) &&
+      all(c("sampleId", "value") %in% colnames(tmb_raw))) {
+    tmb_tbl <- data.frame(
+      sample_id = tmb_raw$sampleId,
+      tmb       = suppressWarnings(as.numeric(tmb_raw$value)),
+      stringsAsFactors = FALSE
+    )
+    master <- left_join(master, tmb_tbl, by = "sample_id")
+    cat(sprintf("TMB joined: %d / %d samples (median=%.1f mut/Mb)\n",
+                sum(!is.na(master$tmb)), nrow(master),
+                median(master$tmb, na.rm = TRUE)))
+  } else {
+    cat("TMB file empty or unexpected format\n")
+    master$tmb <- NA_real_
+  }
+} else {
+  cat("tcga_tmb.json not found — run notebook 01 first\n")
+  master$tmb <- NA_real_
+}
+```
+
+## 2. Classify p16-High/Low Within Tumor Type
+
+```{r p16-classify}
+# ntile(2) assigns 1=low, 2=high within each tumor type
+master <- master |>
+  group_by(tumor_type) |>
+  mutate(
+    p16_status = case_when(
+      ntile(CDKN2A_expr, 2) == 2 ~ "p16-high",
+      ntile(CDKN2A_expr, 2) == 1 ~ "p16-low",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  ungroup()
+
+# Minimum 2 p16-status levels per tumor type required for within-type split
+# Remove tumor types where ntile produced only one level (n too small or tied)
+master <- master |>
+  group_by(tumor_type) |>
+  filter(n_distinct(p16_status, na.rm = TRUE) == 2) |>
+  ungroup()
+
+master <- master |>
+  mutate(
+    group4 = paste(hot_cold, p16_status, sep = " / ")
+  )
+
+cat("Group sizes:\n")
+print(table(master$group4))
+```
+
+## 3. KM: Hot vs Cold
+
+```{r km-hot-cold}
+# NOTE: The KM curves below are UNADJUSTED for age and tumor purity.
+# Age is included in the Cox model (age HR, see above).
+# If hot tumors are systematically younger than cold tumors (see notebook 04 §8b),
+# part of the survival advantage may reflect age rather than immune phenotype.
+# Interpretation: KM shows the marginal association; Cox HR is the age-adjusted estimate.
+
+surv_obj <- Surv(master$OS.time_years, master$OS)
+
+fit_hc <- survfit(surv_obj ~ hot_cold, data = master)
+
+# Log-rank test
+lr_hc <- survdiff(surv_obj ~ hot_cold, data = master)
+lr_p  <- 1 - pchisq(lr_hc$chisq, df = length(lr_hc$obs) - 1)
+cat(sprintf("Log-rank p (hot vs cold): %.2e\n", lr_p))
+
+p1 <- ggsurvplot(
+  fit_hc,
+  data       = master,
+  palette    = c("cold" = "#3498db", "hot" = "#e74c3c"),
+  pval       = TRUE,
+  conf.int   = TRUE,
+  risk.table = TRUE,
+  xlab       = "Time (years)",
+  title      = sprintf("Overall Survival: Hot vs Cold (log-rank p=%.2e)", lr_p),
+  legend.labs = c("cold", "hot")
+)
+
+ggsave(file.path(FIGURES, "km_hot_cold.png"),
+       plot = print(p1), width = 8, height = 8, dpi = 150)
+p1
+```
+
+```{r tertile-sensitivity, fig.width=10, fig.height=7}
+# ── Sensitivity: tertile split for hot/cold IFN-γ threshold ──────────────────
+# Tests whether survival conclusions depend on the choice of median vs tertile cut
+
+master_tertile <- master |>
+  mutate(
+    ifng_tertile = ntile(ifng_score, 3),
+    hot_cold_tertile = case_when(
+      ifng_tertile == 1 ~ "cold (bottom tertile)",
+      ifng_tertile == 3 ~ "hot (top tertile)",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(hot_cold_tertile))
+
+km_tertile <- survfit(
+  Surv(OS.time_years, OS) ~ hot_cold_tertile,
+  data = master_tertile
+)
+lr_tertile <- survdiff(
+  Surv(OS.time_years, OS) ~ hot_cold_tertile,
+  data = master_tertile
+)
+p_tertile <- 1 - pchisq(lr_tertile$chisq, df = 1)
+message(sprintf("Tertile split log-rank p = %.4f (n = %d, excludes middle tertile)",
+                p_tertile, nrow(master_tertile)))
+
+ggsurvplot(
+  km_tertile, data = master_tertile,
+  palette      = c("#e74c3c", "#3498db"),
+  pval         = TRUE,
+  risk.table   = TRUE,
+  risk.table.height = 0.28,
+  xlab         = "Time (years)",
+  ylab         = "Overall survival",
+  title        = "Sensitivity: OS by hot/cold (tertile cut, median excluded)",
+  legend.labs  = c("hot (top tertile)", "cold (bottom tertile)")
+)
+```
+
+## 4. KM: 4-Group (Hot/Cold × p16-High/Low)
+
+```{r km-4group}
+sub4 <- master |>
+  filter(!is.na(group4), !is.na(OS.time_years), !is.na(OS)) |>
+  group_by(group4) |>
+  filter(n() >= 30) |>
+  ungroup()
+
+# Filter out group4 combinations with <5 events (too sparse for reliable KM)
+sub4 <- sub4 |>
+  group_by(group4) |>
+  filter(sum(OS, na.rm = TRUE) >= 5) |>
+  ungroup()
+
+surv4 <- Surv(sub4$OS.time_years, sub4$OS)
+fit4  <- survfit(surv4 ~ group4, data = sub4)
+
+lr4   <- survdiff(surv4 ~ group4, data = sub4)
+lr4_p <- 1 - pchisq(lr4$chisq, df = length(lr4$obs) - 1)
+cat(sprintf("Log-rank p (4-group): %.2e\n", lr4_p))
+
+group_palette <- c(
+  "hot / p16-high"  = "#c0392b",
+  "hot / p16-low"   = "#e08080",
+  "cold / p16-high" = "#1a5276",
+  "cold / p16-low"  = "#85c1e9"
+)
+
+p2 <- ggsurvplot(
+  fit4,
+  data        = sub4,
+  palette     = group_palette[levels(factor(sub4$group4))],
+  pval        = TRUE,
+  conf.int    = FALSE,
+  risk.table  = TRUE,
+  xlab        = "Time (years)",
+  title       = sprintf("OS: Hot/Cold \u00d7 p16-High/Low (log-rank p=%.2e)", lr4_p),
+  legend.labs = levels(factor(sub4$group4)),
+  fontsize    = 3.5
+)
+
+ggsave(file.path(FIGURES, "km_4group.png"),
+       plot = print(p2), width = 9, height = 9, dpi = 150)
+p2
+```
+
+## 5. Sensitivity: Per-Tumor-Type Log-Rank
+
+```{r per-type-logrank}
+per_type_lr <- master |>
+  filter(!is.na(hot_cold), !is.na(OS.time_years), !is.na(OS)) |>
+  group_by(tumor_type) |>
+  filter(n() >= 50) |>
+  summarise(
+    n_hot    = sum(hot_cold == "hot"),
+    n_cold   = sum(hot_cold == "cold"),
+    lr_pval  = {
+      sd <- survdiff(Surv(OS.time_years, OS) ~ hot_cold,
+                     data = cur_data())
+      1 - pchisq(sd$chisq, df = 1)
+    },
+    .groups = "drop"
+  ) |>
+  mutate(padj = p.adjust(lr_pval, method = "BH")) |>
+  arrange(lr_pval)
+
+print(per_type_lr)
+```
+
+## 6. Cox Proportional Hazards (Adjusted)
+
+```{r cox-ph}
+# Include new senescence expression markers where available
+new_expr_markers <- intersect(
+  c("CDKN1A_expr", "SERPINE1_expr", "GDF15_expr"),
+  colnames(master)
+)
+# Optional covariates: include tumor_purity and TMB when available
+optional_covars <- intersect(c("tumor_purity", "tmb"), colnames(master))
+# Log-transform TMB (heavy right skew)
+if ("tmb" %in% colnames(master)) master$log_tmb <- log1p(master$tmb)
+optional_covars <- c(setdiff(optional_covars, "tmb"),
+                     if ("tmb" %in% optional_covars) "log_tmb")
+
+cox_vars <- c("OS.time_years", "OS", "age", "ifng_score", "CDKN2A_expr",
+              new_expr_markers, optional_covars, "tumor_type")
+
+cox_data <- master |>
+  select(all_of(intersect(cox_vars, colnames(master)))) |>
+  filter(if_all(everything(), Negate(is.na)))
+
+cat(sprintf("Cox data: %d samples after NA removal (%.1f%% of master)\n",
+            nrow(cox_data), 100 * nrow(cox_data) / nrow(master)))
+
+# Build formula: age-, purity-, and TMB-adjusted where covariates are available
+cox_rhs <- paste(
+  c("age", "ifng_score", "CDKN2A_expr", new_expr_markers,
+    optional_covars, "strata(tumor_type)"),
+  collapse = " + "
+)
+cox_formula <- as.formula(paste("Surv(OS.time_years, OS) ~", cox_rhs))
+cat("Cox formula:", deparse(cox_formula), "\n")
+
+# strata(tumor_type) allows baseline hazard to vary by cancer type
+# without fitting one coefficient per type (avoids one-hot explosion)
+cox_fit <- coxph(
+  cox_formula,
+  data = cox_data
+)
+
+print(summary(cox_fit))
+
+# Tidy output
+cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE)
+print(cox_tidy)
+
+# Check proportional hazards assumption
+ph_test <- cox.zph(cox_fit)
+print(ph_test)
+cat("\nPH assumption satisfied if all p > 0.05 (non-significant deviation)\n")
+
+# Identify and report PH-violating terms; run landmark sensitivity analysis if any found
+ph_df <- as.data.frame(ph_test$table)
+ph_df$term <- rownames(ph_df)
+violators <- ph_df[!is.na(ph_df$p) & ph_df$p < 0.05 & ph_df$term != "GLOBAL", ]
+if (nrow(violators) > 0) {
+  cat(sprintf("\nPH VIOLATION: %d term(s) violate proportional hazards (p<0.05):\n",
+              nrow(violators)))
+  print(violators[, c("term", "p")])
+  cat("Landmark sensitivity analysis at median follow-up:\n")
+  t_med <- median(cox_data$OS.time_years, na.rm = TRUE)
+  lm_data <- cox_data[cox_data$OS.time_years >= t_med, ]
+  lm_data$OS.time_years <- lm_data$OS.time_years - t_med
+  lm_formula <- as.formula(paste("Surv(OS.time_years, OS) ~", cox_rhs))
+  lm_fit <- tryCatch(coxph(lm_formula, data = lm_data), error = function(e) NULL)
+  if (!is.null(lm_fit)) {
+    cat(sprintf("  (n=%d, follow-up > %.2f yr)\n", nrow(lm_data), t_med))
+    print(tidy(lm_fit, exponentiate = TRUE, conf.int = TRUE)[,
+          c("term", "estimate", "conf.low", "conf.high", "p.value")])
+  }
+} else {
+  cat("All terms satisfy PH assumption.\n")
+}
+
+# Forest plot — ggforest doesn't support strata(), so build manually from tidy output
+p3 <- ggplot(cox_tidy, aes(x = estimate, xmin = conf.low, xmax = conf.high, y = term)) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_errorbarh(height = 0.2) +
+  geom_point(size = 3, colour = "#e74c3c") +
+  scale_x_log10() +
+  labs(
+    x     = "Hazard Ratio (95% CI)",
+    y     = NULL,
+    title = "Cox HR (adjusted for tumor type via strata)"
+  ) +
+  theme_bw()
+
+ggsave(file.path(FIGURES, "cox_forest_plot.png"),
+       plot = p3, width = 8, height = 4, dpi = 150)
+p3
+
+# ── Interaction Cox: CDKN2A_expr × ifng_score ─────────────────────────────────
+# Tests whether the senescence × immune phenotype synergy predicts survival
+# above and beyond their additive effects.
+if (all(c("CDKN2A_expr", "ifng_score") %in% names(cox_data))) {
+  cox_interaction_formula <- as.formula(paste(
+    "Surv(OS.time_years, OS) ~ CDKN2A_expr * ifng_score +",
+    paste(c(intersect(optional_covars, names(cox_data)), "strata(tumor_type)"), collapse = " + ")
+  ))
+
+  cox_int <- tryCatch(
+    coxph(cox_interaction_formula, data = cox_data),
+    error = function(e) { warning("Interaction Cox failed: ", e$message); NULL }
+  )
+
+  if (!is.null(cox_int)) {
+    int_tidy <- broom::tidy(cox_int, conf.int = TRUE, exponentiate = TRUE)
+    int_row  <- int_tidy |> filter(grepl(":", term))
+    if (nrow(int_row) > 0) {
+      message(sprintf(
+        "CDKN2A_expr × ifng_score interaction: HR = %.3f [%.3f–%.3f], p = %.3e",
+        int_row$estimate, int_row$conf.low, int_row$conf.high, int_row$p.value
+      ))
+      cat("\nInteraction term (CDKN2A × IFN-γ):\n")
+      print(int_row |> select(term, estimate, conf.low, conf.high, p.value))
+    }
+    # Export interaction results alongside main Cox results
+    write.csv(
+      int_tidy,
+      file.path(DATA, "cox_interaction_results.csv"),
+      row.names = FALSE
+    )
+    message("Saved cox_interaction_results.csv")
+  }
+} else {
+  message("Skipping interaction Cox: CDKN2A_expr or ifng_score not in dataset.")
+}
+```
+
+```{r log-log-ph-check, fig.width=10, fig.height=5}
+# Log-log survival plot for visual PH assumption check
+# Parallel lines → PH holds; converging/diverging → violation
+
+km_hc <- survfit(Surv(OS.time_years, OS) ~ hot_cold, data = master)
+plot(km_hc, fun = "cloglog",
+     col  = c("#e74c3c", "#3498db"),
+     xlab = "log(Time, years)",
+     ylab = "log(-log(S(t)))",
+     main = "Log-log plot: hot vs cold (parallel = PH holds)",
+     lwd  = 2)
+legend("topleft", legend = c("hot", "cold"),
+       col = c("#e74c3c", "#3498db"), lwd = 2, bty = "n")
+```
+
+```{r log-log-p16, fig.width=10, fig.height=5}
+km_p16 <- survfit(Surv(OS.time_years, OS) ~ p16_status, data = master)
+plot(km_p16, fun = "cloglog",
+     col  = c("#27ae60", "#e67e22"),
+     xlab = "log(Time, years)",
+     ylab = "log(-log(S(t)))",
+     main = "Log-log plot: p16 high vs low",
+     lwd  = 2)
+legend("topleft", legend = c("p16-high", "p16-low"),
+       col = c("#27ae60", "#e67e22"), lwd = 2, bty = "n")
+```
+
+## 7. KM: TP53 Mutation Status
+
+```{r km-tp53}
+if ("tp53_mutated" %in% colnames(master)) {
+  tp53_data <- master |>
+    filter(!is.na(tp53_mutated), !is.na(OS.time_years), !is.na(OS)) |>
+    mutate(tp53_status = ifelse(tp53_mutated, "TP53 mutated", "TP53 wild-type"))
+
+  surv_tp53 <- Surv(tp53_data$OS.time_years, tp53_data$OS)
+  fit_tp53  <- survfit(surv_tp53 ~ tp53_status, data = tp53_data)
+
+  lr_tp53   <- survdiff(surv_tp53 ~ tp53_status, data = tp53_data)
+  lr_tp53_p <- 1 - pchisq(lr_tp53$chisq, df = length(lr_tp53$obs) - 1)
+  cat(sprintf("TP53 mutation frequency: %.1f%%\n",
+              100 * mean(tp53_data$tp53_mutated, na.rm = TRUE)))
+  cat(sprintf("Log-rank p (TP53 mutated vs WT): %.2e\n", lr_tp53_p))
+
+  p_tp53 <- ggsurvplot(
+    fit_tp53,
+    data        = tp53_data,
+    palette     = c("TP53 mutated" = "#8e44ad", "TP53 wild-type" = "#95a5a6"),
+    pval        = TRUE,
+    conf.int    = TRUE,
+    risk.table  = TRUE,
+    xlab        = "Time (years)",
+    title       = sprintf("Overall Survival: TP53 Mutated vs WT (log-rank p=%.2e)", lr_tp53_p),
+    legend.labs = c("TP53 mutated", "TP53 wild-type")
+  )
+
+  ggsave(file.path(FIGURES, "km_tp53_mutation.png"),
+         plot = print(p_tp53), width = 8, height = 8, dpi = 150)
+  p_tp53
+} else {
+  cat("tp53_mutated column not found — re-run notebooks 01 and 03 first.\n")
+}
+```
+
+## 8. Alternative Endpoints: DSS and PFI
+
+```{r dss-endpoint}
+# Disease-Specific Survival: event = death from cancer (DSS==1)
+# Censored includes alive + non-cancer deaths — cleanest test of cancer biology
+if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
+  dss_data <- master |>
+    filter(!is.na(DSS), !is.na(DSS.time_years), !is.na(hot_cold))
+
+  cat(sprintf("DSS: %d samples, %d events (cancer deaths)\n",
+              nrow(dss_data), sum(dss_data$DSS, na.rm = TRUE)))
+
+  surv_dss <- Surv(dss_data$DSS.time_years, dss_data$DSS)
+  fit_dss  <- survfit(surv_dss ~ hot_cold, data = dss_data)
+  lr_dss   <- survdiff(surv_dss ~ hot_cold, data = dss_data)
+  lr_dss_p <- 1 - pchisq(lr_dss$chisq, df = length(lr_dss$obs) - 1)
+  cat(sprintf("DSS log-rank (hot vs cold): p=%.2e\n", lr_dss_p))
+
+  p_dss <- ggsurvplot(
+    fit_dss, data = dss_data,
+    palette     = c("cold" = "#3498db", "hot" = "#e74c3c"),
+    pval        = TRUE, conf.int = TRUE, risk.table = TRUE,
+    xlab        = "Time (years)",
+    title       = sprintf("Disease-Specific Survival: Hot vs Cold (p=%.2e)", lr_dss_p),
+    legend.labs = c("cold", "hot")
+  )
+  ggsave(file.path(FIGURES, "km_dss_hot_cold.png"),
+         plot = print(p_dss), width = 8, height = 8, dpi = 150)
+  p_dss
+} else {
+  cat("DSS columns not found in clinical data — check tcga_clinical_survival.tsv.\n")
+}
+```
+
+```{r pfi-endpoint}
+# Progression-Free Interval: event = recurrence or progression
+# Tests whether senescence/immune phenotype affects recurrence, not just death
+if ("PFI" %in% colnames(master) && "PFI.time_years" %in% colnames(master)) {
+  pfi_data <- master |>
+    filter(!is.na(PFI), !is.na(PFI.time_years), !is.na(hot_cold))
+
+  cat(sprintf("PFI: %d samples, %d events (progressions)\n",
+              nrow(pfi_data), sum(pfi_data$PFI, na.rm = TRUE)))
+
+  surv_pfi <- Surv(pfi_data$PFI.time_years, pfi_data$PFI)
+  fit_pfi  <- survfit(surv_pfi ~ hot_cold, data = pfi_data)
+  lr_pfi   <- survdiff(surv_pfi ~ hot_cold, data = pfi_data)
+  lr_pfi_p <- 1 - pchisq(lr_pfi$chisq, df = length(lr_pfi$obs) - 1)
+  cat(sprintf("PFI log-rank (hot vs cold): p=%.2e\n", lr_pfi_p))
+
+  p_pfi <- ggsurvplot(
+    fit_pfi, data = pfi_data,
+    palette     = c("cold" = "#3498db", "hot" = "#e74c3c"),
+    pval        = TRUE, conf.int = TRUE, risk.table = TRUE,
+    xlab        = "Time (years)",
+    title       = sprintf("Progression-Free Interval: Hot vs Cold (p=%.2e)", lr_pfi_p),
+    legend.labs = c("cold", "hot")
+  )
+  ggsave(file.path(FIGURES, "km_pfi_hot_cold.png"),
+         plot = print(p_pfi), width = 8, height = 8, dpi = 150)
+  p_pfi
+} else {
+  cat("PFI columns not found in clinical data.\n")
+}
+```
+
+## 8b. Competing Risks (Fine-Gray)
+
+```{r competing-risks}
+# Fine-Gray model: cancer death (DSS==1) as event; non-cancer death as competing risk
+# Event coding: 1 = cancer death, 2 = competing (non-cancer death), 0 = censored
+if ("DSS" %in% colnames(master) && "OS" %in% colnames(master) &&
+    "DSS.time_years" %in% colnames(master)) {
+
+  cr_data <- master |>
+    filter(!is.na(DSS), !is.na(OS), !is.na(DSS.time_years),
+           !is.na(ifng_score), !is.na(CDKN2A_expr), !is.na(age), !is.na(tumor_type)) |>
+    mutate(
+      cr_status = case_when(
+        DSS == 1             ~ 1L,  # cancer death (event of interest)
+        OS == 1 & DSS == 0  ~ 2L,  # non-cancer death (competing event)
+        TRUE                ~ 0L   # censored
+      )
+    )
+
+  cat(sprintf("Competing risks: %d samples\n", nrow(cr_data)))
+  cat("Event counts (0=censored, 1=cancer death, 2=competing):\n")
+  print(table(cr_data$cr_status))
+
+  # Covariate matrix (crr requires numeric matrix, no strata support)
+  cr_cov_cols <- intersect(c("age", "ifng_score", "CDKN2A_expr",
+                              new_expr_markers, optional_covars),
+                           colnames(cr_data))
+  cov_mat <- as.matrix(cr_data[, cr_cov_cols])
+
+  fg_fit <- tryCatch(
+    crr(ftime    = cr_data$DSS.time_years,
+        fstatus  = cr_data$cr_status,
+        cov1     = cov_mat,
+        failcode = 1L,
+        cencode  = 0L),
+    error = function(e) {
+      warning(sprintf("Fine-Gray crr() failed: %s\nCheck event counts and covariate matrix for collinearity.", e$message))
+      NULL
+    }
+  )
+
+  if (is.null(fg_fit)) {
+    message("Competing risks model did not converge — skipping forest plot and CSV export for this model.")
+  } else {
+    cr_sum <- summary(fg_fit)
+    cr_tidy <- data.frame(
+      term      = rownames(cr_sum$coef),
+      HR        = exp(cr_sum$coef[, "coef"]),
+      conf.low  = exp(cr_sum$coef[, "coef"] - 1.96 * cr_sum$coef[, "se(coef)"]),
+      conf.high = exp(cr_sum$coef[, "coef"] + 1.96 * cr_sum$coef[, "se(coef)"]),
+      p.value   = cr_sum$coef[, "p-value"],
+      stringsAsFactors = FALSE
+    )
+    cat("\nFine-Gray sub-distribution HRs (event = cancer death):\n")
+    print(cr_tidy)
+
+    # Forest plot
+    p_cr <- ggplot(cr_tidy,
+                   aes(x = HR, xmin = conf.low, xmax = conf.high, y = term)) +
+      geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+      geom_errorbarh(height = 0.2) +
+      geom_point(size = 3, colour = "#8e44ad") +
+      scale_x_log10() +
+      labs(x = "Sub-distribution HR (95% CI)",
+           y = NULL,
+           title = "Fine-Gray competing risks (event = cancer-specific death)") +
+      theme_bw()
+
+    ggsave(file.path(FIGURES, "competing_risks_forest.png"),
+           plot = p_cr, width = 8, height = 4, dpi = 150)
+    p_cr
+
+    write.csv(cr_tidy, file.path(DATA, "competing_risks_results.csv"), row.names = FALSE)
+    cat("Exported competing_risks_results.csv\n")
+  }
+} else {
+  cat("DSS/OS columns not found — competing risks analysis skipped.\n")
+}
+```
+
+## 9. Age-Stratified KM
+
+```{r km-age-groups}
+if ("age" %in% colnames(master)) {
+  # Split at median age within each tumor type to avoid cancer-type confounding
+  age_km_data <- master |>
+    filter(!is.na(age), !is.na(OS.time_years), !is.na(OS)) |>
+    group_by(tumor_type) |>
+    mutate(age_group = ifelse(age >= median(age, na.rm = TRUE),
+                              "older-half", "younger-half")) |>
+    ungroup()
+
+  surv_age <- Surv(age_km_data$OS.time_years, age_km_data$OS)
+  fit_age  <- survfit(surv_age ~ age_group, data = age_km_data)
+
+  lr_age   <- survdiff(surv_age ~ age_group, data = age_km_data)
+  lr_age_p <- 1 - pchisq(lr_age$chisq, df = length(lr_age$obs) - 1)
+  cat(sprintf("Log-rank p (older vs younger half): %.2e\n", lr_age_p))
+
+  p_age <- ggsurvplot(
+    fit_age,
+    data        = age_km_data,
+    palette     = c("older-half" = "#8e44ad", "younger-half" = "#27ae60"),
+    pval        = TRUE,
+    conf.int    = TRUE,
+    risk.table  = TRUE,
+    xlab        = "Time (years)",
+    title       = sprintf("OS by age group (within-type median split; log-rank p=%.2e)", lr_age_p),
+    legend.labs = c("older-half", "younger-half")
+  )
+
+  ggsave(file.path(FIGURES, "km_age_groups.png"),
+         plot = print(p_age), width = 8, height = 8, dpi = 150)
+  p_age
+} else {
+  cat("age column not found — re-check clinical data join.\n")
+}
+```
+
+## 10. Export Tidy Results
+
+```{r export-results}
+write.csv(cox_tidy,    file.path(DATA, "cox_results.csv"),      row.names = FALSE)
+write.csv(per_type_lr, file.path(DATA, "logrank_per_type.csv"), row.names = FALSE)
+
+# DSS log-rank per tumor type (mirrors OS analysis)
+if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
+  per_type_lr_dss <- master |>
+    filter(!is.na(hot_cold), !is.na(DSS.time_years), !is.na(DSS)) |>
+    group_by(tumor_type) |>
+    filter(n() >= 50) |>
+    summarise(
+      lr_pval_dss = {
+        sd <- survdiff(Surv(DSS.time_years, DSS) ~ hot_cold, data = cur_data())
+        1 - pchisq(sd$chisq, df = 1)
+      },
+      .groups = "drop"
+    ) |>
+    mutate(padj_dss = p.adjust(lr_pval_dss, method = "BH"))
+
+  per_type_lr <- left_join(per_type_lr, per_type_lr_dss, by = "tumor_type")
+  write.csv(per_type_lr, file.path(DATA, "logrank_per_type.csv"), row.names = FALSE)
+}
+
+cat("Exported cox_results.csv and logrank_per_type.csv\n")
+```
