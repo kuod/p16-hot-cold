@@ -27,6 +27,8 @@ library(broom)
 library(jsonlite)
 library(cmprsk)
 
+set.seed(42)
+
 DATA    <- "../data"
 FIGURES <- normalizePath("../figures", mustWork = FALSE)
 dir.create(FIGURES, showWarnings = FALSE)
@@ -35,6 +37,12 @@ dir.create(FIGURES, showWarnings = FALSE)
 ## 1. Load & Merge Data
 
 ```{r load-data}
+stopifnot(
+  file.exists(file.path(DATA, "sample_immune_labels.parquet")),
+  file.exists(file.path(DATA, "sample_senescence.parquet")),
+  file.exists(file.path(DATA, "tcga_clinical_survival.tsv"))
+)
+
 immune <- read_parquet(file.path(DATA, "sample_immune_labels.parquet")) |>
   rename(sample_id = `__index_level_0__`)
 senes  <- read_parquet(file.path(DATA, "sample_senescence.parquet")) |>
@@ -166,6 +174,9 @@ print(table(master$group4))
 ## 3. KM: Hot vs Cold
 
 ```{r km-hot-cold}
+cat(sprintf("Events: %d / %d samples; median OS: %.1f yrs\n",
+            sum(master$OS), nrow(master), median(master$OS.time_years)))
+
 # NOTE: The KM curves below are UNADJUSTED for age and tumor purity.
 # Age is included in the Cox model (age HR, see above).
 # If hot tumors are systematically younger than cold tumors (see notebook 04 §8b),
@@ -194,7 +205,7 @@ p1 <- ggsurvplot(
 )
 
 ggsave(file.path(FIGURES, "km_hot_cold.png"),
-       plot = print(p1), width = 8, height = 8, dpi = 150)
+       plot = p1, width = 8, height = 8, dpi = 150)
 p1
 ```
 
@@ -221,7 +232,7 @@ lr_tertile <- survdiff(
   Surv(OS.time_years, OS) ~ hot_cold_tertile,
   data = master_tertile
 )
-p_tertile <- 1 - pchisq(lr_tertile$chisq, df = 1)
+p_tertile <- 1 - pchisq(lr_tertile$chisq, df = length(lr_tertile$obs) - 1)
 message(sprintf("Tertile split log-rank p = %.4f (n = %d, excludes middle tertile)",
                 p_tertile, nrow(master_tertile)))
 
@@ -281,7 +292,7 @@ p2 <- ggsurvplot(
 )
 
 ggsave(file.path(FIGURES, "km_4group.png"),
-       plot = print(p2), width = 9, height = 9, dpi = 150)
+       plot = p2, width = 9, height = 9, dpi = 150)
 p2
 ```
 
@@ -326,9 +337,11 @@ optional_covars <- c(setdiff(optional_covars, "tmb"),
 cox_vars <- c("OS.time_years", "OS", "age", "ifng_score", "CDKN2A_expr",
               new_expr_markers, optional_covars, "tumor_type")
 
+# Filter only on required covariates; optional covariates (purity, TMB) handled by na.action=na.omit
+required_cox_vars <- c("OS.time_years", "OS", "age", "ifng_score", "CDKN2A_expr", "tumor_type")
 cox_data <- master |>
   select(all_of(intersect(cox_vars, colnames(master)))) |>
-  filter(if_all(everything(), Negate(is.na)))
+  filter(if_all(all_of(intersect(required_cox_vars, colnames(master))), Negate(is.na)))
 
 cat(sprintf("Cox data: %d samples after NA removal (%.1f%% of master)\n",
             nrow(cox_data), 100 * nrow(cox_data) / nrow(master)))
@@ -354,6 +367,13 @@ print(summary(cox_fit))
 # Tidy output
 cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE)
 print(cox_tidy)
+
+# Multicollinearity check (VIF > 5 suggests problematic collinearity)
+vif_res <- tryCatch(car::vif(cox_fit), error = function(e) NULL)
+if (!is.null(vif_res)) {
+  cat("\nVariance Inflation Factors (VIF > 5 suggests multicollinearity):\n")
+  print(round(vif_res, 2))
+}
 
 # Check proportional hazards assumption
 ph_test <- cox.zph(cox_fit)
@@ -405,7 +425,7 @@ p3
 # above and beyond their additive effects.
 if (all(c("CDKN2A_expr", "ifng_score") %in% names(cox_data))) {
   cox_interaction_formula <- as.formula(paste(
-    "Surv(OS.time_years, OS) ~ CDKN2A_expr * ifng_score +",
+    "Surv(OS.time_years, OS) ~ age + CDKN2A_expr * ifng_score +",
     paste(c(intersect(optional_covars, names(cox_data)), "strata(tumor_type)"), collapse = " + ")
   ))
 
@@ -425,6 +445,15 @@ if (all(c("CDKN2A_expr", "ifng_score") %in% names(cox_data))) {
       cat("\nInteraction term (CDKN2A × IFN-γ):\n")
       print(int_row |> select(term, estimate, conf.low, conf.high, p.value))
     }
+    # LRT: additive (main Cox) vs interaction model
+    lrt_res <- tryCatch(anova(cox_fit, cox_int), error = function(e) NULL)
+    if (!is.null(lrt_res) && nrow(lrt_res) >= 2) {
+      message(sprintf(
+        "LRT (additive vs interaction model): chi2=%.2f, df=%d, p=%.3e",
+        lrt_res$Chisq[2], lrt_res$Df[2], lrt_res[2, "Pr(>|Chi|)"]
+      ))
+    }
+
     # Export interaction results alongside main Cox results
     write.csv(
       int_tidy,
@@ -495,7 +524,7 @@ if ("tp53_mutated" %in% colnames(master)) {
   )
 
   ggsave(file.path(FIGURES, "km_tp53_mutation.png"),
-         plot = print(p_tp53), width = 8, height = 8, dpi = 150)
+         plot = p_tp53, width = 8, height = 8, dpi = 150)
   p_tp53
 } else {
   cat("tp53_mutated column not found — re-run notebooks 01 and 03 first.\n")
@@ -529,7 +558,7 @@ if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
     legend.labs = c("cold", "hot")
   )
   ggsave(file.path(FIGURES, "km_dss_hot_cold.png"),
-         plot = print(p_dss), width = 8, height = 8, dpi = 150)
+         plot = p_dss, width = 8, height = 8, dpi = 150)
   p_dss
 } else {
   cat("DSS columns not found in clinical data — check tcga_clinical_survival.tsv.\n")
@@ -561,7 +590,7 @@ if ("PFI" %in% colnames(master) && "PFI.time_years" %in% colnames(master)) {
     legend.labs = c("cold", "hot")
   )
   ggsave(file.path(FIGURES, "km_pfi_hot_cold.png"),
-         plot = print(p_pfi), width = 8, height = 8, dpi = 150)
+         plot = p_pfi, width = 8, height = 8, dpi = 150)
   p_pfi
 } else {
   cat("PFI columns not found in clinical data.\n")
@@ -680,7 +709,7 @@ if ("age" %in% colnames(master)) {
   )
 
   ggsave(file.path(FIGURES, "km_age_groups.png"),
-         plot = print(p_age), width = 8, height = 8, dpi = 150)
+         plot = p_age, width = 8, height = 8, dpi = 150)
   p_age
 } else {
   cat("age column not found — re-check clinical data join.\n")
@@ -713,4 +742,10 @@ if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
 }
 
 cat("Exported cox_results.csv and logrank_per_type.csv\n")
+```
+
+## 11. Reproducibility
+
+```{r session-info}
+sessionInfo()
 ```

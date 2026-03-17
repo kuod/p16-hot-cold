@@ -37,7 +37,7 @@ Run notebooks sequentially — each produces parquet files consumed by the next:
 
 Knit the `.Rmd` notebooks with `rmarkdown::render("notebooks/04_overlap_analysis.Rmd")` or via RStudio.
 
-**Note:** Notebook 01 requires a manual download for TIMER2.0 data (see instructions in the cell). The ssGSEA step in notebook 03 caches its output to `data/ssgsea_senescence_scores.parquet` — delete this file to recompute.
+**Note:** The ssGSEA step in notebook 03 caches its output to `data/ssgsea_senescence_scores.parquet` — delete this file to recompute.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ figures/                 # Gitignored output plots
 ```
 
 **Key design decisions:**
-- Hot/cold classification uses **IFN-γ 6-gene signature** (median split) as primary, TIMER2.0 CD8+ fraction as secondary validation
+- Hot/cold classification uses **IFN-γ 6-gene signature** (median split); CD8+ T cell fraction from Thorsson et al. 2018 CIBERSORT is used as secondary validation
 - CDKN2A genomic status (deleted/mutated) is pulled from cBioPortal TCGA PanCancer Atlas 2018 study (`tcga_pan_can_atlas_2018`)
 - ssGSEA senescence scores use MSigDB sets: `FRIDMAN_SENESCENCE_UP`, `REACTOME_CELLULAR_SENESCENCE`, plus custom SASP and effector lists defined in `src/signatures.py`
 - **Python handles data acquisition and ssGSEA scoring (notebooks 01–03); R handles all statistical testing and survival analysis (notebooks 04–05).** Data passes between layers via parquet files read with `arrow`.
@@ -62,7 +62,6 @@ figures/                 # Gitignored output plots
 
 All data is publicly available and downloaded at runtime:
 - **UCSC Xena** — TCGA pan-cancer RNA-seq (Xena hub S3 bucket)
-- **TIMER2.0** — `timer.cistrome.org` (manual download required)
 - **cBioPortal** — REST API at `cbioportal.org/api`
 
 ## Pre-specified Primary Hypotheses

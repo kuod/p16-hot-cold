@@ -23,6 +23,8 @@ library(ggplot2)
 library(rstatix)
 library(pheatmap)
 
+set.seed(42)
+
 DATA    <- "../data"
 FIGURES <- normalizePath("../figures", mustWork = FALSE)
 dir.create(FIGURES, showWarnings = FALSE)
@@ -31,6 +33,12 @@ dir.create(FIGURES, showWarnings = FALSE)
 ## 1. Load & Merge Data
 
 ```{r load-data}
+stopifnot(
+  file.exists(file.path(DATA, "sample_immune_labels.parquet")),
+  file.exists(file.path(DATA, "sample_senescence.parquet")),
+  file.exists(file.path(DATA, "tcga_clinical_survival.tsv"))
+)
+
 immune <- read_parquet(file.path(DATA, "sample_immune_labels.parquet")) |>
   rename(sample_id = `__index_level_0__`)
 senes  <- read_parquet(file.path(DATA, "sample_senescence.parquet")) |>
@@ -178,14 +186,11 @@ if ("tumor_type" %in% colnames(master)) {
     group_by(tumor_type) |>
     # Minimum n=30 per group for stable Spearman estimates
     filter(n() >= 30) |>
-    summarise(
-      rho  = cor.test(CDKN2A_expr, ifng_score,
-                      method = "spearman", exact = FALSE)$estimate,
-      pval = cor.test(CDKN2A_expr, ifng_score,
-                      method = "spearman", exact = FALSE)$p.value,
-      n    = n(),
-      .groups = "drop"
-    ) |>
+    group_modify(\(dat, grp) {
+      ct <- cor.test(dat$CDKN2A_expr, dat$ifng_score, method = "spearman", exact = FALSE)
+      tibble(rho = ct$estimate, pval = ct$p.value, n = nrow(dat))
+    }) |>
+    ungroup() |>
     mutate(
       padj  = p.adjust(pval, method = "BH"),
       sig   = padj < 0.05
@@ -219,22 +224,28 @@ if ("tumor_type" %in% colnames(master)) {
 ```{r chi-squared}
 # PRIMARY TEST (H3): compare p to ALPHA_PRIMARY
 if ("cdkn2a_deleted" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
+  chi_data <- master |> filter(!is.na(cdkn2a_deleted), !is.na(hot_cold))
   ct_tbl <- table(
-    deletion = ifelse(master$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
-    immune   = master$hot_cold
+    deletion = ifelse(chi_data$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
+    immune   = chi_data$hot_cold
   )
   print(ct_tbl)
 
   chi_res <- chisq.test(ct_tbl)
+  if (any(chi_res$expected < 5))
+    warning("Chi-squared (full cohort): expected cell counts < 5 — results may be unreliable")
   cat(sprintf("\nChi-squared test (full cohort): chi2=%.2f, p=%.2e, df=%d\n",
               chi_res$statistic, chi_res$p.value, chi_res$parameter))
 
   # Using master_confirmatory (n≥100 per type) for primary hypothesis test
+  chi_data_conf <- master_confirmatory |> filter(!is.na(cdkn2a_deleted), !is.na(hot_cold))
   ct_tbl_conf <- table(
-    deletion = ifelse(master_confirmatory$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
-    immune   = master_confirmatory$hot_cold
+    deletion = ifelse(chi_data_conf$cdkn2a_deleted, "CDKN2A deleted", "CDKN2A intact"),
+    immune   = chi_data_conf$hot_cold
   )
   chi_res_conf <- chisq.test(ct_tbl_conf)
+  if (any(chi_res_conf$expected < 5))
+    warning("Chi-squared (confirmatory): expected cell counts < 5 — results may be unreliable")
   cat(sprintf("Chi-squared test (confirmatory set): chi2=%.2f, p=%.2e, df=%d\n",
               chi_res_conf$statistic, chi_res_conf$p.value, chi_res_conf$parameter))
 
@@ -357,10 +368,12 @@ alt_summary <- map_dfr(names(alt_gene_map), function(gene) {
 
   ct_tbl <- table(immune = sub$hot_cold,
                   altered = sub[[col]])
-  chi_p <- tryCatch(
-    chisq.test(ct_tbl)$p.value,
-    error = function(e) NA_real_
-  )
+  chi_p <- tryCatch({
+    cr <- chisq.test(ct_tbl)
+    if (any(cr$expected < 5))
+      warning(sprintf("Chi-squared (%s): expected cell counts < 5 — results may be unreliable", gene))
+    cr$p.value
+  }, error = function(e) NA_real_)
 
   sub |>
     group_by(hot_cold) |>
@@ -389,10 +402,9 @@ if (nrow(alt_summary) > 0) {
     distinct(gene, chi_p) |>
     mutate(
       sig = case_when(
-        chi_p < 0.001 ~ "***",
-        chi_p < 0.01  ~ "**",
-        chi_p < 0.05  ~ "*",
-        TRUE          ~ ""
+        chi_p < ALPHA_PRIMARY      ~ "**",   # primary threshold (Bonferroni-corrected)
+        chi_p < ALPHA_EXPLORATORY  ~ "*",    # exploratory threshold
+        TRUE                       ~ ""
       )
     )
 
@@ -414,7 +426,7 @@ if (nrow(alt_summary) > 0) {
       x     = NULL,
       y     = "% of samples altered",
       title = "Senescence gene alteration rates: hot vs cold tumors",
-      caption = "Alteration = deletion and/or mutation; * p<0.05, ** p<0.01, *** p<0.001 (chi-squared)"
+      caption = "Alteration = deletion and/or mutation; * p<0.05 (exploratory), ** p<0.01 (primary threshold) (chi-squared)"
     ) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 30, hjust = 1, face = "bold"))
@@ -643,11 +655,11 @@ if ("cdkn2a_deleted" %in% colnames(master) && "CDKN2A_expr" %in% colnames(master
   print(hot_4g)
 
   # Chi-squared: 4-group vs hot/cold
-  ct4 <- table(
-    group = master$cdkn2a_4group[!is.na(master$cdkn2a_4group)],
-    immune = master$hot_cold[!is.na(master$cdkn2a_4group)]
-  )
+  ct4_data <- master |> filter(!is.na(cdkn2a_4group), !is.na(hot_cold))
+  ct4 <- table(group = ct4_data$cdkn2a_4group, immune = ct4_data$hot_cold)
   chi4 <- chisq.test(ct4)
+  if (any(chi4$expected < 5))
+    warning("Chi-squared (4-group): expected cell counts < 5 — results may be unreliable")
   cat(sprintf("\nChi-squared (4-group vs hot/cold): chi2=%.2f, p=%.2e, df=%d\n",
               chi4$statistic, chi4$p.value, chi4$parameter))
 
@@ -862,4 +874,10 @@ if ("tumor_purity" %in% names(master) && "ifng_score" %in% names(master)) {
 } else {
   message("Skipping IFN-γ purity adjustment: tumor_purity or ifng_score not available.")
 }
+```
+
+## 12. Reproducibility
+
+```{r session-info}
+sessionInfo()
 ```

@@ -18,8 +18,9 @@ def normalize_barcode(barcode: str) -> str:
 
 
 def zscore_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Z-score each gene (row) across samples."""
-    return df.sub(df.mean(axis=1), axis=0).div(df.std(axis=1), axis=0)
+    """Z-score each gene (row) across samples. Constant genes (std=0) are set to 0."""
+    std = df.std(axis=1)
+    return df.sub(df.mean(axis=1), axis=0).div(std.where(std > 0), axis=0).fillna(0)
 
 
 def log2tpm(tpm: pd.DataFrame, pseudocount: float = 1.0) -> pd.DataFrame:

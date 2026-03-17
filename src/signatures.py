@@ -24,7 +24,7 @@ SENESCENCE_EFFECTORS = [
     "CDKN2B",   # p15^INK4b
     "GLB1",     # beta-galactosidase (SA-β-gal proxy)
     "LMNB1",    # loss = senescence marker
-    "H2AX",     # gamma-H2AX surrogate (DNA damage)
+    "H2AFX",    # gamma-H2AX surrogate (DNA damage); HGNC: H2AFX, alias H2AX
 ]
 
 # Immune checkpoint / T cell exhaustion
@@ -49,7 +49,9 @@ SASP_SUPPRESSIVE = [
     "TGFB1",     # master immune suppressor; also induces p15 (CDKN2B)
     "TGFB2",
     "CXCL12",    # SDF-1; drives T-cell exclusion in cold tumors
-    "VEGFA",     # angiogenesis + immune exclusion (already in SASP_GENES but different role)
+    "VEGFA",     # pro-angiogenic + immune exclusion; also in SASP_GENES (pro-inflammatory role)
+                 # dual role: SASP_GENES scores its senescence-promoting arm;
+                 # SASP_SUPPRESSIVE scores its immunosuppressive/exclusion arm
     "PTGS2",     # COX-2 / prostaglandin E2 — immunosuppressive
     "IDO1",      # tryptophan catabolism → T cell anergy
 ]

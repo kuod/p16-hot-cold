@@ -22,11 +22,22 @@ pkgs <- c(
   # Statistical testing
   "broom",      # tidy() Cox model output
   "rstatix",    # cor_test() with BH FDR correction
+  "car"         # vif() multicollinearity check for Cox models
   # Reproducibility
   "renv"        # lock-file based reproducibility (run renv::snapshot() after install)
 )
 
-install.packages(pkgs, repos = "https://cloud.r-project.org")
+failed <- character(0)
+for (pkg in pkgs) {
+  tryCatch(
+    install.packages(pkg, repos = "https://cloud.r-project.org", dependencies = TRUE),
+    error = function(e) {
+      failed <<- c(failed, pkg)
+      message(sprintf("ERROR: Failed to install %s: %s", pkg, e$message))
+    }
+  )
+}
+if (length(failed) > 0) stop(sprintf("Install failed for: %s", paste(failed, collapse = ", ")))
 
 # Verify all packages load cleanly and log versions
 pkg_versions <- lapply(pkgs, function(p) {

@@ -17,6 +17,7 @@ umap-learn~=0.5      # UMAP dimensionality reduction
 # Data access
 requests~=2.31
 tqdm~=4.66
+arrow~=14.0          # read/write parquet files (bridges Python ↔ R)
 
 # Notebooks
 jupyter~=1.0
