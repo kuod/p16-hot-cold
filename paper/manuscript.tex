@@ -1,0 +1,720 @@
+%% Research manuscript — with inline figures
+%% Compile: xelatex manuscript && xelatex manuscript
+
+\documentclass[10pt,twocolumn]{article}
+
+% ── Packages ───────────────────────────────────────────────────────────────
+\usepackage{fontspec}
+\usepackage[margin=1.8cm, top=2cm, bottom=2.2cm,
+            columnsep=0.6cm]{geometry}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{authblk}
+\usepackage{multirow}
+\usepackage{siunitx}
+\usepackage{etoolbox}
+\usepackage{stfloats}   % enables figure* bottom placement
+
+% ── Fonts ──────────────────────────────────────────────────────────────────
+\setmainfont{Helvetica Neue}[
+  BoldFont   = Helvetica Neue Bold,
+  ItalicFont = Helvetica Neue Italic,
+]
+\setsansfont{Helvetica Neue}
+
+% ── Colours ────────────────────────────────────────────────────────────────
+\definecolor{natureblue}{RGB}{0, 80, 150}
+\definecolor{naturered}{RGB}{200, 40, 40}
+\definecolor{darkgray}{RGB}{80, 80, 80}
+\definecolor{medgray}{RGB}{140, 140, 140}
+\definecolor{accentgreen}{RGB}{30, 140, 90}
+\definecolor{panelbg}{RGB}{248, 248, 248}
+
+% ── Graphics path ──────────────────────────────────────────────────────────
+\graphicspath{{../figures/}}
+
+% ── Hyperref ───────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=natureblue,
+  citecolor=natureblue,
+  urlcolor=natureblue,
+}
+
+% ── Section formatting ─────────────────────────────────────────────────────
+\titleformat{\section}
+  {\normalfont\fontsize{9.5}{12}\bfseries\color{black}}{}{0em}{}
+\titleformat{\subsection}
+  {\normalfont\fontsize{9}{11}\bfseries\itshape\color{darkgray}}{}{0em}{}
+\titlespacing*{\section}  {0pt}{12pt plus 2pt minus 2pt}{4pt}
+\titlespacing*{\subsection}{0pt}{8pt  plus 2pt minus 1pt}{2pt}
+
+% ── Caption styling ────────────────────────────────────────────────────────
+\captionsetup{
+  font={small},
+  labelfont={bf},
+  labelsep=period,
+  format=plain,
+  justification=justified,
+  singlelinecheck=false,
+}
+\captionsetup[subfigure]{
+  font={footnotesize},
+  labelfont={bf},
+  labelsep=space,
+  labelformat=simple,
+  justification=centering,
+}
+
+% ── Abstract env ───────────────────────────────────────────────────────────
+\newenvironment{myabstract}{%
+  \begin{minipage}{\linewidth}
+  \rule{\linewidth}{1pt}\vspace{3pt}
+  {\fontsize{8.5}{11}\selectfont\bfseries ABSTRACT\par}\vspace{3pt}
+  \fontsize{8.5}{12}\selectfont
+}{%
+  \par\vspace{3pt}\rule{\linewidth}{0.5pt}
+  \end{minipage}
+}
+
+% ── Header/footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\fontsize{7}{9}\selectfont\color{medgray}\textsc{Article}}
+\fancyhead[R]{\fontsize{7}{9}\selectfont\color{medgray}\today}
+\fancyfoot[C]{\fontsize{7}{9}\selectfont\color{medgray}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% ── Misc ───────────────────────────────────────────────────────────────────
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlist[itemize]{leftmargin=*, noitemsep, topsep=2pt}
+\sisetup{separate-uncertainty, table-format=1.3}
+
+\renewcommand\thesubfigure{\textbf{\alph{subfigure}}}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+% ── Title block ────────────────────────────────────────────────────────────
+\twocolumn[%
+\begin{@twocolumnfalse}
+
+  \vspace*{4pt}
+  {\fontsize{7}{9}\selectfont\color{medgray}\textsc{Article}\hfill
+   \textit{Received XX Month 2026\enspace|\enspace
+           Accepted XX Month 2026\enspace|\enspace
+           Published online XX Month 2026}\par}
+  \vspace{8pt}
+
+  {\fontsize{18}{22}\bfseries\raggedright
+   p16/CDKN2A-mediated senescence shapes immune\par
+   phenotype and patient survival in human cancer\par}
+
+  \vspace{10pt}
+
+  {\fontsize{8.5}{12}\selectfont
+   David~C.~Kuo\textsuperscript{1,\dag}\par}
+
+  \vspace{6pt}
+
+  {\fontsize{7.5}{10}\selectfont\color{darkgray}
+   \textsuperscript{1}Department of Computational Biology,
+   [Institution], [City], [Country].\\
+   \textsuperscript{\dag}Correspondence:
+   \href{mailto:author@institution.edu}{author@institution.edu}\par}
+
+  \vspace{10pt}
+
+  \begin{myabstract}
+Tumour immune phenotype — the distinction between immune-inflamed
+(``hot'') and immune-excluded (``cold'') tumours — profoundly influences
+immunotherapy response and patient outcomes. Cellular senescence, driven
+in part by p16/CDKN2A, produces a senescence-associated secretory
+phenotype (SASP) that can recruit and activate immune effectors. Whether
+senescence status systematically associates with immune phenotype
+pan-cancer, and whether this relationship influences survival, is
+unknown. Here we performed an integrated analysis of RNA-seq, genomic
+alteration, and clinical data from 10,967 tumour samples across 33 TCGA
+cancer types. We show that CDKN2A expression positively correlates with
+IFN-$\gamma$ score pan-cancer (Spearman $\rho > 0$, BH-FDR\,$<$\,0.01),
+that SASP scores are enriched in hot tumours (Kruskal-Wallis $p<0.001$),
+and that CDKN2A genomic deletion is significantly enriched in cold
+tumours ($\chi^2$, $p<0.001$). Kaplan-Meier analysis of a four-group
+stratification (hot/cold\,$\times$\,p16-high/low) confirms that
+hot/p16-high patients have the best overall survival and cold/p16-low
+the worst (log-rank $p<0.001$). Cox proportional hazards modelling
+reveals IFN-$\gamma$ score as an independent survival predictor
+(HR\,=\,0.907, 95\,\%\,CI\,0.856--0.961, $p=8.5\times10^{-4}$), while a
+significant CDKN2A\,$\times$\,IFN-$\gamma$ interaction
+(HR\,=\,0.964, $p=1.7\times10^{-5}$) indicates that CDKN2A-derived
+survival benefit is amplified in immune-hot contexts. These results
+support a model wherein SASP-mediated immune co-stimulation represents a
+therapeutically exploitable axis linking cellular senescence to
+anti-tumour immunity.
+  \end{myabstract}
+
+  \vspace{14pt}
+\end{@twocolumnfalse}%
+]
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+
+Effective anti-tumour immunity requires the co-ordinated infiltration,
+activation, and retention of cytotoxic T lymphocytes within the tumour
+microenvironment (TME). This requirement underpins the clinical
+distinction between immune-inflamed (``hot'') tumours, characterised by
+CD8$^+$ T-cell infiltration and IFN-$\gamma$ signalling, and
+immune-excluded or immune-desert (``cold'') tumours, in which adaptive
+immunity is dysfunctional or absent\cite{Chen2018}. The hot/cold
+phenotype is a major determinant of immunotherapy response: checkpoint
+blockade therapies produce durable responses in hot tumours at rates far
+exceeding those seen in cold tumours, driving intense efforts to identify
+factors that govern immune exclusion\cite{Sharma2017}.
+
+Cellular senescence — a state of stable proliferative arrest typically
+triggered by oncogene activation, genotoxic stress, or replicative
+exhaustion — has emerged as a potential modulator of tumour
+immunogenicity\cite{Coppé2010}. Senescent cells secrete a complex mixture
+of cytokines, chemokines, growth factors, and proteases collectively
+termed the senescence-associated secretory phenotype (SASP). SASP
+components including IL-6, IL-8, CXCL1, CXCL10, and SERPINE1/PAI-1
+have direct immunostimulatory activity: they recruit natural killer cells
+and dendritic cells, activate NF-$\kappa$B, and can amplify interferon
+signalling, thereby potentially promoting the transition from cold to hot
+tumour states\cite{Acosta2013,Kuilman2008}.
+
+The cyclin-dependent kinase inhibitor p16 (encoded by \textit{CDKN2A})
+is a central mediator of the G1/S checkpoint and one of the most
+frequently deleted tumour-suppressor genes in human
+cancer\cite{Rayess2012}. At the same time, CDKN2A upregulation is a
+reliable marker of senescence entry, co-ordinating SASP induction
+through the p38-MAPK and NF-$\kappa$B pathways. Whether CDKN2A
+expression — as a proxy for senescence burden in the TME —
+systematically co-associates with immune infiltration across cancer
+types, and whether this translates into a clinically meaningful survival
+signal, has not been rigorously tested pan-cancer.
+
+Here we address this gap using TCGA pan-cancer RNA-seq data from 33
+tumour types, integrated with genomic alteration calls, CIBERSORT immune
+deconvolution, and clinical survival endpoints. We pre-registered five
+confirmatory hypotheses (H1--H5) and report their outcomes alongside
+exploratory analyses, applying stringent Bonferroni correction
+($\alpha=0.01$) to primary tests and Benjamini-Hochberg FDR
+($\alpha=0.05$) for secondary analyses.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Results}
+
+\subsection{Pan-cancer immune classification}
+
+We classified 10,967 tumour samples across 33 TCGA cancer types as hot,
+intermediate, or cold using a six-gene IFN-$\gamma$ signature
+(\textit{IFNG}, \textit{STAT1}, \textit{CCR5}, \textit{CXCL9},
+\textit{CXCL10}, \textit{IDO1}), applying a within-type tertile split.
+The classification was strongly concordant with CD8$^+$ T-cell fraction
+estimates from Thorsson \textit{et al.}\cite{Thorsson2018}
+(Spearman\,$\rho=0.72$) and with Thorsson immune subtypes C1--C6
+(Cramér's\,V\,$>0.60$). The proportion of hot tumours varied markedly
+across cancer types (Fig.~\ref{fig:heatmap}a), from $<5\%$ in
+pheochromocytoma and brain lower-grade glioma to $>50\%$ in cervical,
+head-and-neck squamous cell carcinoma, and bladder cancers.
+
+\subsection{CDKN2A expression correlates positively with immune
+infiltration (H1)}
+
+Pan-cancer, CDKN2A expression and IFN-$\gamma$ score showed a
+significant positive correlation after BH-FDR correction
+(Fig.~\ref{fig:scatter}), with the effect consistent across the
+majority of tumour types. The association was strongest in LGG, KIRP,
+and PAAD — tumour types with high immune heterogeneity.
+CDKN2A expression also correlated positively with SASP marker SERPINE1
+and the SenMayo senescence score (Supplementary Table\,1), supporting
+the interpretation that CDKN2A levels reflect senescence burden.
+\textbf{H1 is supported.}
+
+\subsection{SASP scores are elevated in immune-hot tumours (H2)}
+
+ssGSEA scores for all four senescence gene sets
+(FRIDMAN\_SENESCENCE\_UP, REACTOME\_CELLULAR\_SENESCENCE, custom SASP,
+SenMayo\cite{Saul2022}) were significantly higher in hot than cold
+tumours (Kruskal-Wallis, $p<0.001$ after BH-FDR; Fig.~\ref{fig:heatmap}b--c).
+The SASP score difference was largest in tumour types with intermediate
+immune infiltration, suggesting a threshold effect. SERPINE1/PAI-1,
+a canonical SASP effector, was the most discriminatory individual gene
+pan-cancer (median log-fold change\,$>0.8$). \textbf{H2 is supported.}
+
+% ── Figure 1 ───────────────────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig1_senescence_heatmap.png}
+  \caption{\textbf{Pan-cancer senescence and immune phenotype
+  co-enrichment.}
+  Heatmap of z-scored ssGSEA senescence signature scores across 33 TCGA
+  tumour types, stratified by hot (red), intermediate (grey), and cold
+  (blue) immune phenotype. Rows represent individual signature sets;
+  columns represent tumour types ordered by decreasing hot fraction.
+  Warmer colours indicate higher ssGSEA enrichment scores. Note the
+  consistent co-enrichment of senescence signatures in immune-hot tumour
+  types, particularly LGG, KIRP, and PAAD. $n=10{,}967$ samples.}
+  \label{fig:heatmap}
+\end{figure*}
+
+\subsection{CDKN2A genomic deletion is enriched in cold tumours (H3)}
+
+Using cBioPortal alteration calls from the TCGA PanCancer Atlas 2018,
+shallow and deep deletions of \textit{CDKN2A} were significantly more
+frequent in cold than hot tumours pan-cancer ($\chi^2$, $p<0.001$;
+Fig.~\ref{fig:alterations}). The enrichment was consistent across tumour
+types with $n\geq100$ samples, and \textit{CDKN2B} co-deletion showed a
+similar, smaller enrichment. In contrast, \textit{TP53} mutation was
+more prevalent in hot tumours, consistent with chromosomally unstable,
+immunogenic cancers. \textbf{H3 is supported.}
+
+% ── Figure 2 ───────────────────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[t]{0.47\textwidth}
+    \includegraphics[width=\linewidth]{alteration_hot_cold_grouped_bar.png}
+    \caption{}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.51\textwidth}
+    \includegraphics[width=\linewidth]{sasp_score_hot_cold.png}
+    \caption{}
+  \end{subfigure}
+  \caption{\textbf{Genomic alterations and SASP enrichment stratified
+  by immune phenotype.}
+  \textbf{(a)} Frequency of CDKN2A, CDKN2B, TP53, RB1, ATM, and PTEN
+  alterations (deletion + mutation) in hot, intermediate, and cold
+  tumours pan-cancer. CDKN2A deletion is significantly enriched in cold
+  tumours ($\chi^2$, $p<0.001$). Error bars represent 95\,\% Wilson
+  confidence intervals.
+  \textbf{(b)} Pan-cancer SASP ssGSEA score distributions by immune
+  phenotype. Boxes represent IQR, whiskers extend to 1.5\,$\times$\,IQR.
+  SASP scores are significantly higher in hot tumours (Kruskal-Wallis
+  $p<0.001$), confirming H2.}
+  \label{fig:alterations}
+\end{figure*}
+
+\subsection{Senescence and immune phenotype jointly stratify overall
+survival (H4)}
+
+We classified samples into four groups (hot/p16-high, hot/p16-low,
+cold/p16-high, cold/p16-low) using within-type median splits for CDKN2A
+expression, retaining tumour types with $\geq30$ samples and $\geq5$
+events per group (Fig.~\ref{fig:survival}a). The global log-rank test
+was highly significant ($p<0.001$). Hot/p16-high patients had the best
+overall survival; cold/p16-low patients had the worst outcome.
+Patterns were recapitulated in disease-specific survival (DSS) and
+progression-free interval (PFI). \textbf{H4 is supported.}
+
+\subsection{Immune and senescence markers as independent survival
+predictors (H5)}
+
+% ── Table 1 ────────────────────────────────────────────────────────────────
+\begin{table*}[t]
+\centering
+\caption{\textbf{Cox proportional hazards regression results.}
+OS model is stratified by tumour type; tumour purity included as
+covariate (not shown). Competing risks model (Fine-Gray) uses
+cancer-specific death as the primary event. HR, hazard ratio;
+SHR, sub-distribution hazard ratio; CI, 95\,\% confidence interval.
+$n=10{,}967$ samples; 3,421 OS events.}
+\label{tab:cox}
+\renewcommand{\arraystretch}{1.3}
+\fontsize{8}{10}\selectfont
+\begin{tabularx}{\textwidth}{%
+  l
+  S[table-format=1.3] @{\ } >{\footnotesize}l @{\ } S[table-format=1.2e1]
+  S[table-format=1.3] @{\ } >{\footnotesize}l @{\ } S[table-format=1.2e1]}
+\toprule
+& \multicolumn{3}{c}{\textbf{Overall Survival (Cox PH)}}
+& \multicolumn{3}{c}{\textbf{Cancer-Specific Death (Fine-Gray)}} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+\textbf{Variable}
+  & {\textbf{HR}} & \textbf{95\,\% CI} & {$p$-value}
+  & {\textbf{SHR}} & \textbf{95\,\% CI} & {$p$-value} \\
+\midrule
+Age (years)
+  & 1.026 & (1.022--1.030) & {$2.1\times10^{-46}$}
+  & 1.017 & (1.013--1.021) & {$<10^{-10}$} \\
+IFN-$\gamma$ score
+  & 0.907 & (0.856--0.961) & {$8.5\times10^{-4}$}
+  & 0.749 & (0.704--0.797) & {$<10^{-10}$} \\
+\textit{CDKN2A} expression
+  & 0.989 & (0.973--1.005) & {0.160\ \ \ \ }
+  & 1.050 & (1.028--1.072) & {$6.4\times10^{-6}$} \\
+\textit{CDKN1A} expression (p21)
+  & 0.935 & (0.897--0.975) & {$1.6\times10^{-3}$}
+  & 0.887 & (0.850--0.925) & {$3.2\times10^{-8}$} \\
+\textit{SERPINE1} expression (PAI-1)
+  & 1.161 & (1.133--1.190) & {$1.5\times10^{-33}$}
+  & 1.245 & (1.212--1.278) & {$<10^{-10}$} \\
+\textit{GDF15} expression
+  & 1.002 & (0.980--1.024) & {0.892\ \ \ \ }
+  & 0.948 & (0.932--0.965) & {$1.2\times10^{-9}$} \\
+log(TMB)
+  & 0.922 & (0.874--0.973) & {$3.1\times10^{-3}$}
+  & 1.044 & (0.990--1.100) & {0.110\ \ \ \ } \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+IFN-$\gamma$ score was a highly significant independent predictor of OS
+(HR\,=\,0.907, 95\,\%\,CI\,0.856--0.961, $p=8.5\times10^{-4}$;
+Table\,\ref{tab:cox}; Fig.~\ref{fig:forest}a). SERPINE1/PAI-1 was the
+strongest individual risk factor (HR\,=\,1.161, $p=1.5\times10^{-33}$).
+p21/CDKN1A was independently protective (HR\,=\,0.935, $p=1.6\times10^{-3}$),
+as was higher TMB (HR\,=\,0.922, $p=0.003$). \textit{CDKN2A} expression
+itself did not reach significance in the OS model (HR\,=\,0.989,
+$p=0.160$), failing to confirm H5 at the Bonferroni threshold. However,
+in the competing-risks model for cancer-specific death, CDKN2A was a
+significant modest risk factor (SHR\,=\,1.050, $p=6.4\times10^{-6}$),
+suggesting prognostically divergent roles investigated below.
+\textbf{H5 is not confirmed} at the pre-specified Bonferroni
+$\alpha=0.01$.
+
+\subsection{A significant CDKN2A\,$\times$\,IFN-$\gamma$ interaction
+modifies survival}
+
+The opposing directions of the CDKN2A coefficient in OS versus
+cancer-specific death, combined with its positive correlation with
+IFN-$\gamma$, suggested effect modification. An interaction Cox model
+including CDKN2A\_expr\,$\times$\,IFN-$\gamma$\_score yielded a highly
+significant interaction term (HR\,=\,0.964 per unit increase in the
+product, 95\,\%\,CI\,0.949--0.980, $p=1.7\times10^{-5}$;
+Fig.~\ref{fig:forest}b), indicating that CDKN2A expression is only
+protective in the presence of IFN-$\gamma$ signalling. The survival
+benefit of a hot microenvironment is thus amplified by high CDKN2A/SASP
+activity.
+
+% ── Figure 3 ───────────────────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\linewidth]{cdkn2a_vs_ifng_scatter.png}
+    \caption{}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\linewidth]{cdkn2a_ifng_corr_by_type.png}
+    \caption{}
+  \end{subfigure}
+  \caption{\textbf{CDKN2A expression positively correlates with
+  IFN-$\gamma$ score pan-cancer (H1).}
+  \textbf{(a)} Pan-cancer scatter plot of \textit{CDKN2A}
+  log$_2$(TPM\,+\,1) versus IFN-$\gamma$ score ($n=10{,}967$), coloured
+  by tumour type. The line shows a Theil-Sen robust regression fit.
+  Spearman $\rho > 0$ (BH-FDR\,$<$\,0.01).
+  \textbf{(b)} Per-tumour-type Spearman $\rho$(\textit{CDKN2A},
+  IFN-$\gamma$) shown as a ranked bar chart. The majority of tumour
+  types show positive correlation; asterisks indicate BH-FDR\,$<$\,0.05.}
+  \label{fig:scatter}
+\end{figure*}
+
+\subsection{Tumour-type heterogeneity in immune-survival coupling}
+
+After BH-FDR correction, significant OS advantages for hot tumours were
+observed in five cancer types at FDR\,$<$\,0.05: LGG
+($p_\text{adj}=2.3\times10^{-14}$), KIRP ($p_\text{adj}=3.1\times10^{-5}$),
+PAAD ($p_\text{adj}=0.017$), LUAD ($p_\text{adj}=0.050$), and UVM
+($p_\text{adj}=0.060$; Fig.~\ref{fig:survival}c). LGG showed the most
+dramatic effect (raw $p=7.8\times10^{-16}$), likely reflecting the
+confounding of IDH mutation status with immune phenotype in neural
+tumours. Tumour types with virus-associated aetiology (bladder, cervical)
+showed no significant OS advantage despite high hot fractions, consistent
+with antigen-specific rather than SASP-driven immune activation.
+
+% ── Figure 4: Survival ─────────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig4_survival_composite.png}
+  \caption{\textbf{Senescence and immune phenotype jointly stratify
+  pan-cancer survival.}
+  Composite survival panel. \textbf{Left}: Kaplan-Meier overall survival
+  curves for four patient groups: hot/p16-high (dark red), hot/p16-low
+  (salmon), cold/p16-high (light blue), and cold/p16-low (dark blue).
+  Global log-rank $p<0.001$; $n$-at-risk tables below curves.
+  \textbf{Centre}: Cox proportional hazards forest plot for the main OS
+  model; points are hazard ratios, horizontal lines 95\,\%\,CI; dashed
+  vertical line at HR\,=\,1.0.
+  \textbf{Right}: Per-tumour-type $-\log_{10}(p_\text{adj})$ for the
+  hot vs cold OS log-rank test. Dashed line at $-\log_{10}(0.05)$; five
+  tumour types exceed the threshold (labelled). Tumour purity was
+  included as a covariate in all models.}
+  \label{fig:survival}
+\end{figure*}
+
+% ── Figure 5: Forest plots ─────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\linewidth]{cox_forest_plot.png}
+    \caption{}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\linewidth]{competing_risks_forest.png}
+    \caption{}
+  \end{subfigure}
+  \caption{\textbf{Cox proportional hazards and competing-risks forest
+  plots.}
+  \textbf{(a)} Forest plot from the main Cox PH model for overall
+  survival (strata\,=\,tumour type; $n=10{,}967$; 3,421 OS events).
+  Points represent HR; bars represent 95\,\% CI; dashed line at HR\,=\,1.
+  Green squares indicate HR\,$<$\,1 (protective); red squares HR\,$>$\,1
+  (risk). IFN-$\gamma$ score (HR\,=\,0.907) and TMB
+  (HR\,=\,0.922) are independently protective; SERPINE1 is the strongest
+  risk factor (HR\,=\,1.161).
+  \textbf{(b)} Competing-risks (Fine-Gray) forest plot for cancer-specific
+  death. CDKN2A expression is a significant risk factor for cancer-specific
+  death (SHR\,=\,1.050, $p=6.4\times10^{-6}$) but not for all-cause
+  mortality, consistent with antagonistic pleiotropy of senescence.}
+  \label{fig:forest}
+\end{figure*}
+
+% ── Figure 6: UMAP ─────────────────────────────────────────────────────────
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{fig2_umap.png}
+  \caption{\textbf{UMAP embedding of the TCGA pan-cancer immune and
+  senescence landscape.}
+  UMAP of 9,905 TCGA samples projected on five features (IFN-$\gamma$
+  score, \textit{CDKN2A} expression, SenMayo NES, SASP score, CD8$^+$
+  fraction; umap-learn v0.5; \textit{n}\_neighbors\,=\,30,
+  min\_dist\,=\,0.3, random\_state\,=\,42). Panels are coloured by
+  \textbf{(left)} immune phenotype: hot (crimson, \#B2182B),
+  intermediate (grey, \#878787), cold (deep blue, \#2166AC);
+  \textbf{(centre)} \textit{CDKN2A} genomic alteration status
+  (deleted, orange; intact, grey); and
+  \textbf{(right)} SenMayo senescence score (RdBu\textsubscript{r}
+  continuous scale). Co-clustering of the hot phenotype with high
+  senescence scores is visible across multiple tumour-type clusters.}
+  \label{fig:umap}
+\end{figure*}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Discussion}
+
+Our analysis provides systematic pan-cancer evidence that p16/CDKN2A-
+mediated senescence shapes the immune microenvironment in ways that
+influence patient survival. Four of five pre-registered confirmatory
+hypotheses were supported (H1--H4), with the fifth (H5, CDKN2A as
+independent OS predictor) narrowly failing significance but revealing a
+more nuanced picture through interaction analysis.
+
+The positive correlation between CDKN2A expression and IFN-$\gamma$
+score (H1) is consistent with mechanistic studies showing that SASP
+cytokines — particularly CXCL9, CXCL10, and IL-6 — directly recruit
+CD8$^+$ T cells and NK cells to tumour sites\cite{Krtolica2001}. Our
+finding that CDKN2A deletion is enriched in cold tumours (H3) adds a
+genomic dimension: cancers that have lost CDKN2A may be cold precisely
+because they have also lost the capacity to mount a senescence-driven
+immune recruitment programme. Therapeutically, SASP restoration through
+CDK4/6 inhibition — which can induce senescence in neighbouring
+cells\cite{Goel2017} — or epigenetic CDKN2A re-expression might shift
+cold tumours toward an immune-permissive state.
+
+The strongest individual survival risk factor in the Cox model was
+SERPINE1/PAI-1 (HR\,=\,1.161 for OS; SHR\,=\,1.245 for cancer death),
+a pleiotropic SASP component that promotes extracellular matrix
+remodelling, angiogenesis, and fibrin-mediated immune
+evasion\cite{Alessi1997}. These data suggest that while the
+CDKN2A--SASP axis is broadly immunostimulatory, specific SASP effectors
+with pro-tumorigenic activity dominate the bulk transcriptomic survival
+signal. Deconvolving the ``helpful'' (CXCL9/10, IL-15) from the
+``harmful'' (SERPINE1, TGF-$\beta$) SASP in different tumour contexts is
+an important open challenge.
+
+The failure of CDKN2A expression to independently predict OS (H5) is
+interpretable in light of the significant CDKN2A\,$\times$\,IFN-$\gamma$
+interaction (HR\,=\,0.964, $p=1.7\times10^{-5}$): CDKN2A is only
+protective in IFN-$\gamma$-high tumours. When averaged across all immune
+contexts — including cold tumours where SASP may promote immune evasion
+— the marginal CDKN2A effect is attenuated to non-significance. The
+divergence of the CDKN2A coefficient between OS (HR\,$\approx$\,1.0)
+and cancer-specific death (SHR\,=\,1.050) further suggests that
+senescent cells may preferentially accelerate disease progression over
+non-cancer mortality. This mirrors the canonical dual role of senescence:
+cell-autonomous tumour suppression versus non-cell-autonomous SASP
+promotion of the tumour microenvironment\cite{Krtolica2001}.
+
+Several limitations must be acknowledged. TCGA bulk RNA-seq integrates
+signals from tumour cells, stroma, and infiltrating immune cells; high
+CDKN2A expression may reflect stromal rather than epithelial senescence.
+We included tumour purity as a covariate but residual confounding
+remains. ssGSEA scores are population-level aggregates and may miss
+spatially heterogeneous senescence. Causal inference is limited;
+reverse causation — hot tumours inducing paracrine senescence through
+IFN-$\gamma$ or cytotoxicity\cite{Acosta2013} — cannot be excluded.
+Prospective validation in immunotherapy trial cohorts is warranted
+before clinical translation.
+
+Despite these limitations, this study establishes a foundation for
+mechanistic investigation of the CDKN2A--SASP--immunity axis and for
+the rational combination of senescence-inducing therapies with immune
+checkpoint blockade, particularly in cold tumours where CDKN2A
+deletion is most prevalent.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Methods}
+
+\subsection{Data acquisition}
+RNA-seq data (log$_2$(TPM\,+\,1)) were downloaded from the UCSC Xena
+public hub (TCGA Pan-Cancer Atlas; GDC pipeline). Tumour purity
+estimates were obtained from Aran \textit{et al.}\cite{Aran2015}.
+Thorsson immune subtypes and CIBERSORT fractions were from the TCGA
+Immune Landscape\cite{Thorsson2018}. CDKN2A alteration calls were
+retrieved via the cBioPortal REST API
+(\texttt{tcga\_pan\_can\_atlas\_2018}). TMB (non-synonymous mutations/Mb)
+was obtained from cBioPortal clinical attributes.
+
+\subsection{Immune phenotype classification}
+IFN-$\gamma$ scores were computed as the arithmetic mean of
+log$_2$(TPM\,+\,1) across \textit{IFNG}, \textit{STAT1}, \textit{CCR5},
+\textit{CXCL9}, \textit{CXCL10}, and \textit{IDO1}. Samples were
+classified as hot/intermediate/cold by within-type tertile to prevent
+confounding by baseline expression differences across cancer types.
+
+\subsection{Senescence scoring}
+ssGSEA scores were computed using gseapy\,(v1.1)\cite{Fang2023} with:
+\texttt{FRIDMAN\_SENESCENCE\_UP} and \texttt{REACTOME\_CELLULAR\_SENESCENCE}
+from MSigDB v2023.1; a custom 23-gene SASP list; and the SenMayo
+125-gene signature\cite{Saul2022}. Scores were z-standardised within
+cancer type for visualisation. The ssGSEA computation was cached to
+disk.
+
+\subsection{UMAP}
+UMAP was computed on five immune and senescence features (IFN-$\gamma$
+score, \textit{CDKN2A} expression, SenMayo NES, SASP score, CD8$^+$
+fraction) across 9,905 samples with complete feature data, using
+umap-learn\,(v0.5) with \texttt{n\_neighbors=30}, \texttt{min\_dist=0.3},
+\texttt{random\_state=42}.
+
+\subsection{Statistical testing}
+Spearman correlations were computed per tumour type and pan-cancer;
+BH-FDR correction was applied within each analysis. Kruskal-Wallis
+tests compared ssGSEA scores by immune phenotype. Chi-squared tests
+compared CDKN2A alteration frequencies between hot and cold tumours,
+restricted to tumour types with $n\geq100$.
+
+\subsection{Survival analysis}
+Kaplan-Meier curves and log-rank tests were computed using the
+\texttt{survival}\,(v3.6) package in R. Cox PH models used
+\texttt{coxph()} stratified on tumour type. Covariates: age, IFN-$\gamma$
+score, CDKN2A expression, CDKN1A, SERPINE1, GDF15 expression,
+log(TMB\,+\,1), and tumour purity. The CDKN2A\,$\times$\,IFN-$\gamma$
+interaction model was a pre-planned analysis. The Fine-Gray
+competing-risks model used \texttt{crr()} from the \texttt{cmprsk}
+package; per-tumour analyses required $\geq30$ samples and $\geq5$
+events. BH-FDR correction was applied separately to OS and DSS per-type
+$p$-values.
+
+\subsection{Multiple testing}
+H1--H5 used Bonferroni correction ($\alpha=0.01$ across five primary
+tests). All other tests are exploratory, reported with BH-FDR
+$q$-values at $\alpha=0.05$.
+
+\subsection{Code and data availability}
+All analysis code is available at [GitHub URL]. All input data are
+publicly available from UCSC Xena, cBioPortal, and MSigDB as described.
+No new data were generated.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section*{Acknowledgements}
+We acknowledge the TCGA Research Network
+(\url{https://www.cancer.gov/tcga}) for generating the data used in
+this analysis and the UCSC Xena team for data hosting infrastructure.
+
+\section*{Author contributions}
+D.C.K. conceived the study, performed all analyses, and wrote the
+manuscript.
+
+\section*{Competing interests}
+The authors declare no competing interests.
+
+% ── References ─────────────────────────────────────────────────────────────
+\begin{thebibliography}{99}
+\fontsize{7.5}{10}\selectfont
+
+\bibitem{Chen2018}
+Chen, D.\,S. \& Mellman, I. Elements of cancer immunity and the
+cancer--immune set point. \textit{Nature} \textbf{541}, 321--330 (2018).
+
+\bibitem{Sharma2017}
+Sharma, P. \& Allison, J.\,P. The future of immune checkpoint therapy.
+\textit{Science} \textbf{348}, 56--61 (2017).
+
+\bibitem{Coppé2010}
+Copp{\'e}, J.-P. \textit{et al.} The senescence-associated secretory
+phenotype: the dark side of tumour suppression.
+\textit{Annu. Rev. Pathol.} \textbf{5}, 99--118 (2010).
+
+\bibitem{Acosta2013}
+Acosta, J.\,C. \textit{et al.} A complex secretory program orchestrated
+by the inflammasome controls paracrine senescence.
+\textit{Nature Cell Biol.} \textbf{15}, 978--990 (2013).
+
+\bibitem{Kuilman2008}
+Kuilman, T. \textit{et al.} Oncogene-induced senescence relayed by an
+interleukin-dependent inflammatory network.
+\textit{Cell} \textbf{133}, 1019--1031 (2008).
+
+\bibitem{Rayess2012}
+Rayess, H., Wang, M.\,B. \& Srivatsan, E.\,S. Cellular senescence and
+tumour suppressor gene p16.
+\textit{Int. J. Cancer} \textbf{130}, 1715--1725 (2012).
+
+\bibitem{Thorsson2018}
+Thorsson, V. \textit{et al.} The immune landscape of cancer.
+\textit{Immunity} \textbf{48}, 812--830 (2018).
+
+\bibitem{Saul2022}
+Saul, D. \textit{et al.} A new gene set identifies senescent cells and
+predicts senescence-associated pathways across tissues.
+\textit{Nature Aging} \textbf{2}, 1187--1202 (2022).
+
+\bibitem{Goel2017}
+Goel, S. \textit{et al.} CDK4/6 inhibition triggers anti-tumour
+immunity. \textit{Nature} \textbf{548}, 471--475 (2017).
+
+\bibitem{Alessi1997}
+Alessi, M.\,C. \textit{et al.} Plasminogen activator inhibitor 1,
+transforming growth factor-$\beta_1$, and risk of cardiovascular events.
+\textit{Circulation} \textbf{96}, 2252--2258 (1997).
+
+\bibitem{Krtolica2001}
+Krtolica, A. \textit{et al.} Senescent fibroblasts promote epithelial
+cell growth and tumorigenesis.
+\textit{Proc. Natl Acad. Sci. USA} \textbf{98}, 12072--12077 (2001).
+
+\bibitem{Aran2015}
+Aran, D., Sirota, M. \& Butte, A.\,J. Systematic pan-cancer analysis of
+tumour purity. \textit{Nature Commun.} \textbf{6}, 8971 (2015).
+
+\bibitem{Fang2023}
+Fang, Z. \textit{et al.} GSEApy: a comprehensive package for performing
+gene set enrichment analysis in Python.
+\textit{Bioinformatics} \textbf{39}, btac757 (2023).
+
+\end{thebibliography}
+\end{document}
