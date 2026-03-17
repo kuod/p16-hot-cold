@@ -32,6 +32,15 @@ set.seed(42)
 DATA    <- "../data"
 FIGURES <- normalizePath("../figures", mustWork = FALSE)
 dir.create(FIGURES, showWarnings = FALSE)
+
+# ggsurvplot returns a list, not a ggplot — ggsave doesn't work directly.
+# Use this helper to save KM figures (including risk table) to PNG.
+save_km <- function(plot, path, width = 8, height = 8, dpi = 150) {
+  png(path, width = width * dpi, height = height * dpi, res = dpi)
+  print(plot)
+  dev.off()
+  invisible(path)
+}
 ```
 
 ## 1. Load & Merge Data
@@ -75,11 +84,12 @@ master <- immune |>
   ) |>
   rename(age = age_at_initial_pathologic_diagnosis) |>
   filter(!is.na(.data[[OS_COL]]), !is.na(.data[[OST_COL]])) |>
-  mutate(
-    OS.time_years  = .data[[OST_COL]] / 365.25,
-    DSS.time_years = if ("DSS.time" %in% names(.)) DSS.time / 365.25 else NA_real_,
-    PFI.time_years = if ("PFI.time" %in% names(.)) PFI.time / 365.25 else NA_real_
-  )
+  mutate(OS.time_years = .data[[OST_COL]] / 365.25)
+
+if ("DSS.time" %in% names(master))
+  master$DSS.time_years <- master$DSS.time / 365.25
+if ("PFI.time" %in% names(master))
+  master$PFI.time_years <- master$PFI.time / 365.25
 
 cat("Survival table:", nrow(master), "rows\n")
 cat("Endpoints available:",
@@ -164,11 +174,11 @@ master <- master |>
 
 master <- master |>
   mutate(
-    group4 = paste(hot_cold, p16_status, sep = " / ")
+    group6 = paste(hot_cold, p16_status, sep = " / ")
   )
 
 cat("Group sizes:\n")
-print(table(master$group4))
+print(table(master$group6))
 ```
 
 ## 3. KM: Hot vs Cold
@@ -185,114 +195,102 @@ cat(sprintf("Events: %d / %d samples; median OS: %.1f yrs\n",
 
 surv_obj <- Surv(master$OS.time_years, master$OS)
 
+master <- master |>
+  mutate(hot_cold = factor(hot_cold, levels = c("cold", "intermediate", "hot")))
+
 fit_hc <- survfit(surv_obj ~ hot_cold, data = master)
 
-# Log-rank test
+# Log-rank test (df = 2 for 3 groups)
 lr_hc <- survdiff(surv_obj ~ hot_cold, data = master)
 lr_p  <- 1 - pchisq(lr_hc$chisq, df = length(lr_hc$obs) - 1)
-cat(sprintf("Log-rank p (hot vs cold): %.2e\n", lr_p))
+cat(sprintf("Log-rank p (cold / intermediate / hot): %.2e\n", lr_p))
 
 p1 <- ggsurvplot(
   fit_hc,
-  data       = master,
-  palette    = c("cold" = "#3498db", "hot" = "#e74c3c"),
-  pval       = TRUE,
-  conf.int   = TRUE,
-  risk.table = TRUE,
-  xlab       = "Time (years)",
-  title      = sprintf("Overall Survival: Hot vs Cold (log-rank p=%.2e)", lr_p),
-  legend.labs = c("cold", "hot")
+  data        = master,
+  palette     = c("cold" = "#3498db", "intermediate" = "#f39c12", "hot" = "#e74c3c"),
+  pval        = TRUE,
+  conf.int    = TRUE,
+  risk.table  = TRUE,
+  xlab        = "Time (years)",
+  title       = sprintf("Overall Survival: Cold / Intermediate / Hot (log-rank p=%.2e)", lr_p),
+  legend.labs = c("cold", "intermediate", "hot")
 )
 
-ggsave(file.path(FIGURES, "km_hot_cold.png"),
-       plot = p1, width = 8, height = 8, dpi = 150)
+save_km(p1, file.path(FIGURES, "km_hot_cold.png"))
 p1
 ```
 
-```{r tertile-sensitivity, fig.width=10, fig.height=7}
-# ── Sensitivity: tertile split for hot/cold IFN-γ threshold ──────────────────
-# Tests whether survival conclusions depend on the choice of median vs tertile cut
+```{r extreme-tertile-sensitivity, fig.width=10, fig.height=7}
+# ── Sensitivity: top vs bottom tertile only (excludes intermediate) ───────────
+# Provides a sharper contrast test; the primary KM above uses all 3 tertiles.
 
-master_tertile <- master |>
-  mutate(
-    ifng_tertile = ntile(ifng_score, 3),
-    hot_cold_tertile = case_when(
-      ifng_tertile == 1 ~ "cold (bottom tertile)",
-      ifng_tertile == 3 ~ "hot (top tertile)",
-      TRUE ~ NA_character_
-    )
-  ) |>
-  filter(!is.na(hot_cold_tertile))
+master_extreme <- master |> filter(hot_cold %in% c("cold", "hot"))
 
-km_tertile <- survfit(
-  Surv(OS.time_years, OS) ~ hot_cold_tertile,
-  data = master_tertile
-)
-lr_tertile <- survdiff(
-  Surv(OS.time_years, OS) ~ hot_cold_tertile,
-  data = master_tertile
-)
-p_tertile <- 1 - pchisq(lr_tertile$chisq, df = length(lr_tertile$obs) - 1)
-message(sprintf("Tertile split log-rank p = %.4f (n = %d, excludes middle tertile)",
-                p_tertile, nrow(master_tertile)))
+km_extreme <- survfit(Surv(OS.time_years, OS) ~ hot_cold, data = master_extreme)
+lr_extreme <- survdiff(Surv(OS.time_years, OS) ~ hot_cold, data = master_extreme)
+p_extreme  <- 1 - pchisq(lr_extreme$chisq, df = length(lr_extreme$obs) - 1)
+message(sprintf("Extreme tertiles (top vs bottom) log-rank p = %.4f (n = %d)",
+                p_extreme, nrow(master_extreme)))
 
 ggsurvplot(
-  km_tertile, data = master_tertile,
-  palette      = c("#e74c3c", "#3498db"),
+  km_extreme, data = master_extreme,
+  palette      = c("cold" = "#3498db", "hot" = "#e74c3c"),
   pval         = TRUE,
   risk.table   = TRUE,
   risk.table.height = 0.28,
   xlab         = "Time (years)",
   ylab         = "Overall survival",
-  title        = "Sensitivity: OS by hot/cold (tertile cut, median excluded)",
-  legend.labs  = c("hot (top tertile)", "cold (bottom tertile)")
+  title        = "Sensitivity: OS — top vs bottom tertile (intermediate excluded)",
+  legend.labs  = c("cold (bottom tertile)", "hot (top tertile)")
 )
 ```
 
 ## 4. KM: 4-Group (Hot/Cold × p16-High/Low)
 
 ```{r km-4group}
-sub4 <- master |>
-  filter(!is.na(group4), !is.na(OS.time_years), !is.na(OS)) |>
-  group_by(group4) |>
+sub6 <- master |>
+  filter(!is.na(group6), !is.na(OS.time_years), !is.na(OS)) |>
+  group_by(group6) |>
   filter(n() >= 30) |>
   ungroup()
 
-# Filter out group4 combinations with <5 events (too sparse for reliable KM)
-sub4 <- sub4 |>
-  group_by(group4) |>
+# Filter out groups with <5 events (too sparse for reliable KM)
+sub6 <- sub6 |>
+  group_by(group6) |>
   filter(sum(OS, na.rm = TRUE) >= 5) |>
   ungroup()
 
-surv4 <- Surv(sub4$OS.time_years, sub4$OS)
-fit4  <- survfit(surv4 ~ group4, data = sub4)
+surv6 <- Surv(sub6$OS.time_years, sub6$OS)
+fit6  <- survfit(surv6 ~ group6, data = sub6)
 
-lr4   <- survdiff(surv4 ~ group4, data = sub4)
-lr4_p <- 1 - pchisq(lr4$chisq, df = length(lr4$obs) - 1)
-cat(sprintf("Log-rank p (4-group): %.2e\n", lr4_p))
+lr6   <- survdiff(surv6 ~ group6, data = sub6)
+lr6_p <- 1 - pchisq(lr6$chisq, df = length(lr6$obs) - 1)
+cat(sprintf("Log-rank p (6-group): %.2e\n", lr6_p))
 
 group_palette <- c(
-  "hot / p16-high"  = "#c0392b",
-  "hot / p16-low"   = "#e08080",
-  "cold / p16-high" = "#1a5276",
-  "cold / p16-low"  = "#85c1e9"
+  "hot / p16-high"          = "#c0392b",
+  "hot / p16-low"           = "#e08080",
+  "intermediate / p16-high" = "#d68910",
+  "intermediate / p16-low"  = "#f9e79f",
+  "cold / p16-high"         = "#1a5276",
+  "cold / p16-low"          = "#85c1e9"
 )
 
 p2 <- ggsurvplot(
-  fit4,
-  data        = sub4,
-  palette     = group_palette[levels(factor(sub4$group4))],
+  fit6,
+  data        = sub6,
+  palette     = group_palette[levels(factor(sub6$group6))],
   pval        = TRUE,
   conf.int    = FALSE,
   risk.table  = TRUE,
   xlab        = "Time (years)",
-  title       = sprintf("OS: Hot/Cold \u00d7 p16-High/Low (log-rank p=%.2e)", lr4_p),
-  legend.labs = levels(factor(sub4$group4)),
+  title       = sprintf("OS: Immune Tertile \u00d7 p16-High/Low (log-rank p=%.2e)", lr6_p),
+  legend.labs = levels(factor(sub6$group6)),
   fontsize    = 3.5
 )
 
-ggsave(file.path(FIGURES, "km_4group.png"),
-       plot = p2, width = 9, height = 9, dpi = 150)
+save_km(p2, file.path(FIGURES, "km_4group.png"), width = 9, height = 9)
 p2
 ```
 
@@ -304,12 +302,12 @@ per_type_lr <- master |>
   group_by(tumor_type) |>
   filter(n() >= 50) |>
   summarise(
-    n_hot    = sum(hot_cold == "hot"),
-    n_cold   = sum(hot_cold == "cold"),
+    n_hot          = sum(hot_cold == "hot"),
+    n_intermediate = sum(hot_cold == "intermediate"),
+    n_cold         = sum(hot_cold == "cold"),
     lr_pval  = {
-      sd <- survdiff(Surv(OS.time_years, OS) ~ hot_cold,
-                     data = cur_data())
-      1 - pchisq(sd$chisq, df = 1)
+      sd <- survdiff(Surv(OS.time_years, OS) ~ hot_cold, data = cur_data())
+      1 - pchisq(sd$chisq, df = length(sd$obs) - 1)
     },
     .groups = "drop"
   ) |>
@@ -329,6 +327,10 @@ new_expr_markers <- intersect(
 )
 # Optional covariates: include tumor_purity and TMB when available
 optional_covars <- intersect(c("tumor_purity", "tmb"), colnames(master))
+# Drop optional covariates that are entirely missing (e.g. purity file not downloaded)
+optional_covars <- optional_covars[
+  sapply(optional_covars, function(v) any(!is.na(master[[v]])))
+]
 # Log-transform TMB (heavy right skew)
 if ("tmb" %in% colnames(master)) master$log_tmb <- log1p(master$tmb)
 optional_covars <- c(setdiff(optional_covars, "tmb"),
@@ -473,13 +475,13 @@ if (all(c("CDKN2A_expr", "ifng_score") %in% names(cox_data))) {
 
 km_hc <- survfit(Surv(OS.time_years, OS) ~ hot_cold, data = master)
 plot(km_hc, fun = "cloglog",
-     col  = c("#e74c3c", "#3498db"),
+     col  = c("#3498db", "#f39c12", "#e74c3c"),
      xlab = "log(Time, years)",
      ylab = "log(-log(S(t)))",
-     main = "Log-log plot: hot vs cold (parallel = PH holds)",
+     main = "Log-log plot: cold / intermediate / hot (parallel = PH holds)",
      lwd  = 2)
-legend("topleft", legend = c("hot", "cold"),
-       col = c("#e74c3c", "#3498db"), lwd = 2, bty = "n")
+legend("topleft", legend = c("cold", "intermediate", "hot"),
+       col = c("#3498db", "#f39c12", "#e74c3c"), lwd = 2, bty = "n")
 ```
 
 ```{r log-log-p16, fig.width=10, fig.height=5}
@@ -523,8 +525,7 @@ if ("tp53_mutated" %in% colnames(master)) {
     legend.labs = c("TP53 mutated", "TP53 wild-type")
   )
 
-  ggsave(file.path(FIGURES, "km_tp53_mutation.png"),
-         plot = p_tp53, width = 8, height = 8, dpi = 150)
+  save_km(p_tp53, file.path(FIGURES, "km_tp53_mutation.png"))
   p_tp53
 } else {
   cat("tp53_mutated column not found — re-run notebooks 01 and 03 first.\n")
@@ -547,18 +548,17 @@ if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
   fit_dss  <- survfit(surv_dss ~ hot_cold, data = dss_data)
   lr_dss   <- survdiff(surv_dss ~ hot_cold, data = dss_data)
   lr_dss_p <- 1 - pchisq(lr_dss$chisq, df = length(lr_dss$obs) - 1)
-  cat(sprintf("DSS log-rank (hot vs cold): p=%.2e\n", lr_dss_p))
+  cat(sprintf("DSS log-rank (cold / intermediate / hot): p=%.2e\n", lr_dss_p))
 
   p_dss <- ggsurvplot(
     fit_dss, data = dss_data,
-    palette     = c("cold" = "#3498db", "hot" = "#e74c3c"),
+    palette     = c("cold" = "#3498db", "intermediate" = "#f39c12", "hot" = "#e74c3c"),
     pval        = TRUE, conf.int = TRUE, risk.table = TRUE,
     xlab        = "Time (years)",
-    title       = sprintf("Disease-Specific Survival: Hot vs Cold (p=%.2e)", lr_dss_p),
-    legend.labs = c("cold", "hot")
+    title       = sprintf("Disease-Specific Survival: Cold / Intermediate / Hot (p=%.2e)", lr_dss_p),
+    legend.labs = c("cold", "intermediate", "hot")
   )
-  ggsave(file.path(FIGURES, "km_dss_hot_cold.png"),
-         plot = p_dss, width = 8, height = 8, dpi = 150)
+  save_km(p_dss, file.path(FIGURES, "km_dss_hot_cold.png"))
   p_dss
 } else {
   cat("DSS columns not found in clinical data — check tcga_clinical_survival.tsv.\n")
@@ -579,18 +579,17 @@ if ("PFI" %in% colnames(master) && "PFI.time_years" %in% colnames(master)) {
   fit_pfi  <- survfit(surv_pfi ~ hot_cold, data = pfi_data)
   lr_pfi   <- survdiff(surv_pfi ~ hot_cold, data = pfi_data)
   lr_pfi_p <- 1 - pchisq(lr_pfi$chisq, df = length(lr_pfi$obs) - 1)
-  cat(sprintf("PFI log-rank (hot vs cold): p=%.2e\n", lr_pfi_p))
+  cat(sprintf("PFI log-rank (cold / intermediate / hot): p=%.2e\n", lr_pfi_p))
 
   p_pfi <- ggsurvplot(
     fit_pfi, data = pfi_data,
-    palette     = c("cold" = "#3498db", "hot" = "#e74c3c"),
+    palette     = c("cold" = "#3498db", "intermediate" = "#f39c12", "hot" = "#e74c3c"),
     pval        = TRUE, conf.int = TRUE, risk.table = TRUE,
     xlab        = "Time (years)",
-    title       = sprintf("Progression-Free Interval: Hot vs Cold (p=%.2e)", lr_pfi_p),
-    legend.labs = c("cold", "hot")
+    title       = sprintf("Progression-Free Interval: Cold / Intermediate / Hot (p=%.2e)", lr_pfi_p),
+    legend.labs = c("cold", "intermediate", "hot")
   )
-  ggsave(file.path(FIGURES, "km_pfi_hot_cold.png"),
-         plot = p_pfi, width = 8, height = 8, dpi = 150)
+  save_km(p_pfi, file.path(FIGURES, "km_pfi_hot_cold.png"))
   p_pfi
 } else {
   cat("PFI columns not found in clinical data.\n")
@@ -708,8 +707,7 @@ if ("age" %in% colnames(master)) {
     legend.labs = c("older-half", "younger-half")
   )
 
-  ggsave(file.path(FIGURES, "km_age_groups.png"),
-         plot = p_age, width = 8, height = 8, dpi = 150)
+  save_km(p_age, file.path(FIGURES, "km_age_groups.png"))
   p_age
 } else {
   cat("age column not found — re-check clinical data join.\n")
@@ -731,7 +729,7 @@ if ("DSS" %in% colnames(master) && "DSS.time_years" %in% colnames(master)) {
     summarise(
       lr_pval_dss = {
         sd <- survdiff(Surv(DSS.time_years, DSS) ~ hot_cold, data = cur_data())
-        1 - pchisq(sd$chisq, df = 1)
+        1 - pchisq(sd$chisq, df = length(sd$obs) - 1)
       },
       .groups = "drop"
     ) |>

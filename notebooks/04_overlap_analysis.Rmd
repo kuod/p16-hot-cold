@@ -249,10 +249,15 @@ if ("cdkn2a_deleted" %in% colnames(master) && "hot_cold" %in% colnames(master)) 
   cat(sprintf("Chi-squared test (confirmatory set): chi2=%.2f, p=%.2e, df=%d\n",
               chi_res_conf$statistic, chi_res_conf$p.value, chi_res_conf$parameter))
 
-  # Hot fraction by deletion status
+  # Immune phenotype fraction by deletion status
   hot_frac <- master |>
     group_by(cdkn2a_deleted) |>
-    summarise(hot_fraction = mean(hot_cold == "hot", na.rm = TRUE), .groups = "drop")
+    summarise(
+      pct_hot          = 100 * mean(hot_cold == "hot",          na.rm = TRUE),
+      pct_intermediate = 100 * mean(hot_cold == "intermediate", na.rm = TRUE),
+      pct_cold         = 100 * mean(hot_cold == "cold",         na.rm = TRUE),
+      .groups = "drop"
+    )
   print(hot_frac)
 }
 ```
@@ -262,24 +267,28 @@ if ("cdkn2a_deleted" %in% colnames(master) && "hot_cold" %in% colnames(master)) 
 ```{r mann-whitney}
 # PRIMARY TEST (H2): compare p to ALPHA_PRIMARY
 if ("SASP" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
-  hot_sasp  <- master |> filter(hot_cold == "hot",  !is.na(SASP)) |> pull(SASP)
-  cold_sasp <- master |> filter(hot_cold == "cold", !is.na(SASP)) |> pull(SASP)
+  hot_sasp  <- master |> filter(hot_cold == "hot",          !is.na(SASP)) |> pull(SASP)
+  int_sasp  <- master |> filter(hot_cold == "intermediate", !is.na(SASP)) |> pull(SASP)
+  cold_sasp <- master |> filter(hot_cold == "cold",         !is.na(SASP)) |> pull(SASP)
 
-  mw <- wilcox.test(hot_sasp, cold_sasp, alternative = "two.sided", exact = FALSE)
-  cat(sprintf("Mann-Whitney U: W=%.0f, p=%.2e\n", mw$statistic, mw$p.value))
-  cat(sprintf("Median SASP — hot: %.3f,  cold: %.3f\n",
-              median(hot_sasp), median(cold_sasp)))
+  # PRIMARY TEST (H2): Kruskal-Wallis for 3 groups; compare p to ALPHA_PRIMARY
+  kw <- kruskal.test(SASP ~ hot_cold, data = master |> filter(!is.na(SASP), !is.na(hot_cold)))
+  cat(sprintf("Kruskal-Wallis: chi2=%.2f, df=%d, p=%.2e\n",
+              kw$statistic, kw$parameter, kw$p.value))
+  cat(sprintf("Median SASP — hot: %.3f,  intermediate: %.3f,  cold: %.3f\n",
+              median(hot_sasp), median(int_sasp), median(cold_sasp)))
 
   plot_df <- master |>
     filter(!is.na(SASP), !is.na(hot_cold)) |>
+    mutate(hot_cold = factor(hot_cold, levels = c("cold", "intermediate", "hot"))) |>
     select(SASP, hot_cold)
 
   p3 <- ggplot(plot_df, aes(x = SASP, fill = hot_cold)) +
     geom_histogram(bins = 60, alpha = 0.6, position = "identity") +
-    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db")) +
+    scale_fill_manual(values = c("hot" = "#e74c3c", "intermediate" = "#f39c12", "cold" = "#3498db")) +
     labs(
       x     = "SASP ssGSEA score",
-      title = sprintf("SASP score distribution: hot vs cold tumors\n(p=%.2e)", mw$p.value),
+      title = sprintf("SASP score distribution: hot / intermediate / cold tumors\n(Kruskal-Wallis p=%.2e)", kw$p.value),
       fill  = NULL
     ) +
     theme_bw()
@@ -409,7 +418,9 @@ if (nrow(alt_summary) > 0) {
     )
 
   p7 <- ggplot(
-    alt_summary |> mutate(gene = factor(gene, levels = gene_order)),
+    alt_summary |>
+      mutate(gene    = factor(gene, levels = gene_order),
+             hot_cold = factor(hot_cold, levels = c("cold", "intermediate", "hot"))),
     aes(x = gene, y = pct_altered, fill = hot_cold)
   ) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -419,7 +430,7 @@ if (nrow(alt_summary) > 0) {
       inherit.aes = FALSE, size = 4, fontface = "bold", colour = "grey30"
     ) +
     scale_fill_manual(
-      values = c("hot" = "#e74c3c", "cold" = "#3498db"),
+      values = c("hot" = "#e74c3c", "intermediate" = "#f39c12", "cold" = "#3498db"),
       name   = "Immune\nphenotype"
     ) +
     labs(
@@ -453,7 +464,7 @@ if (nrow(alt_summary) > 0) {
       type_alt |> mutate(gene = factor(gene, levels = gene_order)),
       aes(x = gene, y = tumor_type, fill = pct_altered)
     ) +
-      facet_wrap(~ hot_cold, ncol = 2) +
+      facet_wrap(~ factor(hot_cold, levels = c("cold", "intermediate", "hot")), ncol = 3) +
       geom_tile(colour = "white", linewidth = 0.3) +
       scale_fill_gradient(low = "white", high = "#c0392b",
                           name = "% altered", limits = c(0, NA)) +
@@ -512,27 +523,35 @@ if ("age" %in% colnames(master) && "tumor_type" %in% colnames(master)) {
 
 ```{r age-hot-cold}
 if ("age" %in% colnames(master) && "hot_cold" %in% colnames(master)) {
-  age_hc <- master |> filter(!is.na(age), !is.na(hot_cold))
+  age_hc <- master |>
+    filter(!is.na(age), !is.na(hot_cold)) |>
+    mutate(hot_cold = factor(hot_cold, levels = c("cold", "intermediate", "hot")))
 
-  mw_age <- wilcox.test(age ~ hot_cold, data = age_hc, exact = FALSE)
-  med_hot  <- median(age_hc$age[age_hc$hot_cold == "hot"],  na.rm = TRUE)
-  med_cold <- median(age_hc$age[age_hc$hot_cold == "cold"], na.rm = TRUE)
-  cat(sprintf("Median age — hot: %.1f,  cold: %.1f\n", med_hot, med_cold))
-  cat(sprintf("Mann-Whitney U: W=%.0f, p=%.2e\n", mw_age$statistic, mw_age$p.value))
+  kw_age <- kruskal.test(age ~ hot_cold, data = age_hc)
+  med_hot  <- median(age_hc$age[age_hc$hot_cold == "hot"],          na.rm = TRUE)
+  med_int  <- median(age_hc$age[age_hc$hot_cold == "intermediate"], na.rm = TRUE)
+  med_cold <- median(age_hc$age[age_hc$hot_cold == "cold"],         na.rm = TRUE)
+  cat(sprintf("Median age — hot: %.1f,  intermediate: %.1f,  cold: %.1f\n",
+              med_hot, med_int, med_cold))
+  cat(sprintf("Kruskal-Wallis: chi2=%.2f, df=%d, p=%.2e\n",
+              kw_age$statistic, kw_age$parameter, kw_age$p.value))
 
   p8b <- ggplot(age_hc, aes(x = hot_cold, y = age, fill = hot_cold)) +
     geom_violin(alpha = 0.6, trim = FALSE) +
     geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.9) +
-    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db"), guide = "none") +
+    scale_fill_manual(
+      values = c("hot" = "#e74c3c", "intermediate" = "#f39c12", "cold" = "#3498db"),
+      guide  = "none"
+    ) +
     labs(
       x     = NULL,
       y     = "Age at diagnosis (years)",
-      title = sprintf("Age by immune phenotype (Mann-Whitney p=%.2e)", mw_age$p.value)
+      title = sprintf("Age by immune phenotype (Kruskal-Wallis p=%.2e)", kw_age$p.value)
     ) +
     theme_bw()
 
   ggsave(file.path(FIGURES, "age_hot_cold.png"),
-         plot = p8b, width = 5, height = 5, dpi = 150)
+         plot = p8b, width = 6, height = 5, dpi = 150)
   p8b
 } else {
   cat("age or hot_cold column not found.\n")
@@ -604,8 +623,10 @@ if ("age" %in% colnames(master) && "tumor_type" %in% colnames(master)) {
     summarise(
       n            = n(),
       median_age   = median(age, na.rm = TRUE),
-      pct_hot      = 100 * mean(hot_cold == "hot", na.rm = TRUE),
-      median_CDKN2A = median(CDKN2A_expr, na.rm = TRUE),
+      pct_hot          = 100 * mean(hot_cold == "hot",          na.rm = TRUE),
+      pct_intermediate = 100 * mean(hot_cold == "intermediate", na.rm = TRUE),
+      pct_cold         = 100 * mean(hot_cold == "cold",         na.rm = TRUE),
+      median_CDKN2A    = median(CDKN2A_expr, na.rm = TRUE),
       .groups = "drop"
     ) |>
     arrange(desc(pct_hot))
@@ -639,15 +660,17 @@ if ("cdkn2a_deleted" %in% colnames(master) && "CDKN2A_expr" %in% colnames(master
   cat("CDKN2A 4-group sizes:\n")
   print(table(master$cdkn2a_4group))
 
-  # Hot fraction by 4-group
+  # Immune phenotype by 4-group
   hot_4g <- master |>
     filter(!is.na(cdkn2a_4group), !is.na(hot_cold)) |>
     group_by(cdkn2a_4group) |>
     summarise(
-      n            = n(),
-      pct_hot      = 100 * mean(hot_cold == "hot", na.rm = TRUE),
-      mean_ifng    = mean(ifng_score, na.rm = TRUE),
-      mean_SASP    = mean(SASP, na.rm = TRUE),
+      n                = n(),
+      pct_hot          = 100 * mean(hot_cold == "hot",          na.rm = TRUE),
+      pct_intermediate = 100 * mean(hot_cold == "intermediate", na.rm = TRUE),
+      pct_cold         = 100 * mean(hot_cold == "cold",         na.rm = TRUE),
+      mean_ifng        = mean(ifng_score, na.rm = TRUE),
+      mean_SASP        = mean(SASP, na.rm = TRUE),
       .groups = "drop"
     ) |>
     arrange(desc(pct_hot))
@@ -672,11 +695,13 @@ if ("cdkn2a_deleted" %in% colnames(master) && "CDKN2A_expr" %in% colnames(master
   )
 
   p9 <- ggplot(
-    master |> filter(!is.na(cdkn2a_4group), !is.na(hot_cold)),
+    master |>
+      filter(!is.na(cdkn2a_4group), !is.na(hot_cold)) |>
+      mutate(hot_cold = factor(hot_cold, levels = c("cold", "intermediate", "hot"))),
     aes(x = cdkn2a_4group, fill = hot_cold)
   ) +
     geom_bar(position = "fill") +
-    scale_fill_manual(values = c("hot" = "#e74c3c", "cold" = "#3498db")) +
+    scale_fill_manual(values = c("hot" = "#e74c3c", "intermediate" = "#f39c12", "cold" = "#3498db")) +
     scale_x_discrete(limits = c("del-low", "del-high", "intact-low", "intact-high")) +
     scale_y_continuous(labels = scales::percent_format()) +
     labs(
@@ -699,7 +724,8 @@ if ("cdkn2a_deleted" %in% colnames(master) && "CDKN2A_expr" %in% colnames(master
 ```{r cdkn2a-purity-quartile}
 # ── 9b. CDKN2A expression vs deletion status by purity quartile ──────────────
 # Tests whether "high-expression + deleted" samples are purity artefacts
-if ("cdkn2a_deleted" %in% names(master) && "tumor_purity" %in% names(master)) {
+if ("cdkn2a_deleted" %in% names(master) && "tumor_purity" %in% names(master) &&
+    any(!is.na(master$tumor_purity))) {
   pq_df <- master |>
     filter(!is.na(cdkn2a_deleted), !is.na(tumor_purity), !is.na(CDKN2A_expr)) |>
     mutate(
@@ -753,20 +779,20 @@ if ("immune_subtype" %in% colnames(master)) {
     n      <- sum(ct_tab)
     k      <- min(nrow(ct_tab), ncol(ct_tab))
     cramers_v <- sqrt(chi2$statistic / (n * (k - 1)))
-    message(sprintf("Cramér's V (hot/cold × immune subtype): %.3f  (χ²=%.1f, df=%d, p=%.2e)",
+    message(sprintf("Cramér's V (immune tertile × immune subtype): %.3f  (χ²=%.1f, df=%d, p=%.2e)",
                     cramers_v, chi2$statistic, chi2$parameter, chi2$p.value))
 
     # Proportion table for interpretation
     prop_tab <- prop.table(ct_tab, margin = 2)  # column proportions
-    cat("\nHot fraction within each Thorsson subtype:\n")
-    print(round(prop_tab["hot", ] * 100, 1))
+    cat("\nImmune phenotype fraction within each Thorsson subtype:\n")
+    print(round(prop_tab * 100, 1))
 
     cat(sprintf(
       "\nInterpretation: Cramér's V = %.2f suggests %s concordance between\n",
       cramers_v,
       ifelse(cramers_v > 0.5, "strong", ifelse(cramers_v > 0.3, "moderate", "weak"))
     ))
-    cat("hot/cold and Thorsson immune subtypes.\n")
+    cat("immune tertiles and Thorsson immune subtypes.\n")
     cat("If V > 0.5, the two classifications are largely redundant.\n")
   }
 
@@ -778,7 +804,9 @@ if ("immune_subtype" %in% colnames(master)) {
       n            = n(),
       median_CDKN2A = median(CDKN2A_expr, na.rm = TRUE),
       median_SASP   = median(SASP, na.rm = TRUE),
-      pct_hot       = 100 * mean(hot_cold == "hot", na.rm = TRUE),
+      pct_hot          = 100 * mean(hot_cold == "hot",          na.rm = TRUE),
+      pct_intermediate = 100 * mean(hot_cold == "intermediate", na.rm = TRUE),
+      pct_cold         = 100 * mean(hot_cold == "cold",         na.rm = TRUE),
       .groups = "drop"
     ) |>
     arrange(immune_subtype)
@@ -812,7 +840,8 @@ if ("immune_subtype" %in% colnames(master)) {
 ```{r stromal-deconfounding}
 # Test whether SASP → hot/cold association survives purity deconfounding.
 # Strategy: regress SASP on tumor_purity, use residuals as "purity-adjusted SASP"
-if ("tumor_purity" %in% colnames(master) && "SASP" %in% colnames(master)) {
+if ("tumor_purity" %in% colnames(master) && "SASP" %in% colnames(master) &&
+    any(!is.na(master$tumor_purity))) {
   sasp_purity_data <- master |>
     filter(!is.na(SASP), !is.na(tumor_purity), !is.na(hot_cold))
 
@@ -845,19 +874,21 @@ if ("tumor_purity" %in% colnames(master) && "SASP" %in% colnames(master)) {
   master$SASP_purity_adj[!is.na(master$SASP) & !is.na(master$tumor_purity)] <- resid_sasp
 
   # Mann-Whitney: adjusted SASP in hot vs cold
-  adj_hot  <- master$SASP_purity_adj[master$hot_cold == "hot"  & !is.na(master$SASP_purity_adj)]
-  adj_cold <- master$SASP_purity_adj[master$hot_cold == "cold" & !is.na(master$SASP_purity_adj)]
-  mw_adj <- wilcox.test(adj_hot, adj_cold, exact = FALSE)
-  cat(sprintf("Mann-Whitney (purity-adjusted SASP, hot vs cold): p=%.2e\n", mw_adj$p.value))
-  cat(sprintf("  Median adj SASP — hot: %.3f, cold: %.3f\n",
-              median(adj_hot, na.rm=TRUE), median(adj_cold, na.rm=TRUE)))
+  purity_sasp_sub <- master |> filter(!is.na(SASP_purity_adj), !is.na(hot_cold))
+  kw_adj <- kruskal.test(SASP_purity_adj ~ hot_cold, data = purity_sasp_sub)
+  adj_medians <- tapply(purity_sasp_sub$SASP_purity_adj, purity_sasp_sub$hot_cold, median, na.rm = TRUE)
+  cat(sprintf("Kruskal-Wallis (purity-adjusted SASP): chi2=%.2f, df=%d, p=%.2e\n",
+              kw_adj$statistic, kw_adj$parameter, kw_adj$p.value))
+  cat(sprintf("  Median adj SASP — hot: %.3f, intermediate: %.3f, cold: %.3f\n",
+              adj_medians["hot"], adj_medians["intermediate"], adj_medians["cold"]))
 
 } else {
   cat("tumor_purity or SASP column not found — re-run notebooks 01–03.\n")
 }
 
 # ── 11b. Purity-adjusted IFN-γ score ─────────────────────────────────────────
-if ("tumor_purity" %in% names(master) && "ifng_score" %in% names(master)) {
+if ("tumor_purity" %in% names(master) && "ifng_score" %in% names(master) &&
+    any(!is.na(master$tumor_purity))) {
   purity_df <- master |> filter(!is.na(tumor_purity), !is.na(ifng_score))
   # Residualise ifng_score on tumor_purity
   lm_ifng <- lm(ifng_score ~ tumor_purity, data = purity_df)
@@ -868,8 +899,9 @@ if ("tumor_purity" %in% names(master) && "ifng_score" %in% names(master)) {
   message(sprintf("IFN-γ ~ purity: raw ρ = %.3f; after residualisation ρ ≈ %.3f", rho_raw, rho_adj))
 
   # Mann-Whitney: hot vs cold using purity-adjusted IFN-γ
-  wt_ifng <- wilcox.test(ifng_resid ~ hot_cold, data = purity_df)
-  message(sprintf("Hot vs cold purity-adj IFN-γ: W = %.0f, p = %.3e", wt_ifng$statistic, wt_ifng$p.value))
+  wt_ifng <- kruskal.test(ifng_resid ~ hot_cold, data = purity_df)
+  message(sprintf("Immune tertile purity-adj IFN-γ: chi2 = %.2f, df = %d, p = %.3e",
+                  wt_ifng$statistic, wt_ifng$parameter, wt_ifng$p.value))
   cat("\nNote: Both SASP and IFN-γ scores are tested with and without purity adjustment above.\n")
 } else {
   message("Skipping IFN-γ purity adjustment: tumor_purity or ifng_score not available.")
