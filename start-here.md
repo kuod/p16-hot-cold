@@ -104,6 +104,20 @@ files not yet generated.
 
 ---
 
+## Freeing disk space
+
+Run `clean.sh` to remove all regenerable files (~370 MB). A dry-run is shown by default:
+
+```bash
+./clean.sh           # preview what would be deleted
+./clean.sh --force   # actually delete
+```
+
+Everything removed is recreated by re-running the pipeline (Steps 2–6 above).
+The largest item is the raw TCGA expression matrix (~316 MB, ~30 min to redownload).
+
+---
+
 ## Verification checklist
 
 Before trusting results, confirm:
