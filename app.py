@@ -1761,8 +1761,12 @@ elif page == "Summary":
             fig_rho.update_coloraxes(showscale=False)
             st.plotly_chart(fig_rho, use_container_width=True)
         with col_h1b:
-            _scatter = _h1.sample(min(3000, len(_h1)), random_state=42).copy()
-            _scatter["hot_cold"] = df.loc[_scatter.index, "hot_cold"]
+            _scatter = (
+                df[["CDKN2A_expr", "ifng_score", "hot_cold"]]
+                .dropna(subset=["CDKN2A_expr", "ifng_score"])
+                .sample(min(3000, len(_h1)), random_state=42)
+                .copy()
+            )
             fig_sc = px.scatter(
                 _scatter, x="CDKN2A_expr", y="ifng_score",
                 color="hot_cold",
