@@ -986,6 +986,341 @@ elif page == "Hypotheses":
                 "protective effect of CDKN2A expression on OS."
             )
 
+    def _h6_conclusion():
+        if h6_cold_med is None:
+            return None, "SASP_suppressive data not yet available — re-run notebook 03."
+        delta = h6_cold_med - h6_hot_med
+        if delta > 0:
+            return True, (
+                f"**H6 supported.** Cold tumors have higher suppressive SASP scores than hot tumors "
+                f"(cold median {h6_cold_med:.3f} vs hot {h6_hot_med:.3f}, Δ = {delta:+.3f}), "
+                "suggesting immune exclusion is partly driven by active immunosuppressive SASP signalling."
+            )
+        else:
+            return False, (
+                f"**H6 not supported.** Suppressive SASP scores do not favour cold tumors "
+                f"(cold {h6_cold_med:.3f} vs hot {h6_hot_med:.3f}, Δ = {delta:+.3f})."
+            )
+
+    def _h7_conclusion():
+        if h7_hot_med is None:
+            return None, "TMB data not yet available — re-run notebook 01."
+        direction_ok = h7_hot_med > h7_cold_med
+        rho_str = f"  Spearman ρ(TMB, IFN-γ) = {h7_rho:.3f}." if h7_rho is not None else ""
+        if direction_ok:
+            return True, (
+                f"**H7 supported.** Hot tumors have higher median TMB than cold tumors "
+                f"(hot {h7_hot_med:.1f} vs cold {h7_cold_med:.1f} mut/Mb).{rho_str} "
+                "This is consistent with DNA damage driving both mutational burden and p16-mediated senescence."
+            )
+        else:
+            return False, (
+                f"**H7 not supported.** TMB does not differ in the expected direction "
+                f"(hot {h7_hot_med:.1f} vs cold {h7_cold_med:.1f} mut/Mb).{rho_str}"
+            )
+
+    def _h8_conclusion():
+        if h8_cold_rate is None:
+            return None, "TP53 alteration data not yet available — re-run notebooks 01 and 03."
+        diff = h8_cold_rate - h8_hot_rate
+        if diff > 0:
+            return True, (
+                f"**H8 supported.** TP53 alterations are more frequent in cold tumors "
+                f"({h8_cold_rate:.1f}%) than hot ({h8_hot_rate:.1f}%, Δ = {diff:+.1f} pp), "
+                "consistent with TP53 loss impairing senescence-associated immune signalling."
+            )
+        else:
+            return False, (
+                f"**H8 not supported.** TP53 alteration rates do not favour cold tumors "
+                f"(cold {h8_cold_rate:.1f}%, hot {h8_hot_rate:.1f}%, Δ = {diff:+.1f} pp). "
+                "Note: TP53 gain-of-function mutations in hot tumors may confound a simple deletion/mutation count."
+            )
+
+    def _h9_conclusion():
+        if h9_rho is None:
+            return None, "LMNB1_expr data not yet available — re-run notebook 03."
+        strength = "strong" if abs(h9_rho) > 0.4 else ("moderate" if abs(h9_rho) > 0.2 else "weak")
+        if h9_rho < 0:
+            return True, (
+                f"**H9 supported.** LMNB1 expression is negatively correlated with IFN-γ score "
+                f"(ρ = {h9_rho:.3f}, n = {h9_n:,} — {strength} inverse correlation), consistent with "
+                "nuclear lamina loss in deeply senescent cells activating cGAS-STING and SASP."
+            )
+        else:
+            return False, (
+                f"**H9 not supported.** LMNB1 expression is positively correlated with IFN-γ score "
+                f"(ρ = {h9_rho:.3f}, n = {h9_n:,}), contrary to the hypothesis."
+            )
+
+    def _h10_conclusion():
+        if h10_hot_med is None:
+            return None, "Tumor purity data not yet available — re-run notebook 01."
+        rho_str = f"  Spearman ρ(purity, IFN-γ) = {h10_rho:.3f}." if h10_rho is not None else ""
+        diff = h10_cold_med - h10_hot_med
+        if h10_cold_med > h10_hot_med:
+            return True, (
+                f"**H10 confirmed.** Cold tumors have higher median purity than hot tumors "
+                f"(cold {h10_cold_med:.2f} vs hot {h10_hot_med:.2f}, Δ = {diff:+.2f}).{rho_str} "
+                "This confirms that purity is a meaningful confound: part of the hot/cold signal reflects "
+                "immune cell dilution rather than intrinsic tumour biology. Purity is included as a Cox covariate."
+            )
+        else:
+            return False, (
+                f"**H10 not confirmed.** Purity does not differ in the expected direction "
+                f"(cold {h10_cold_med:.2f} vs hot {h10_hot_med:.2f}).{rho_str}"
+            )
+
+    def _h11_conclusion():
+        if h11_rho is None:
+            return None, "CDKN1A_expr data not yet available — re-run notebook 03."
+        strength = "strong" if abs(h11_rho) > 0.4 else ("moderate" if abs(h11_rho) > 0.2 else "weak")
+        vs_h1 = ""
+        if h1_rho is not None:
+            if abs(h11_rho) > abs(h1_rho):
+                vs_h1 = f" CDKN1A shows a *stronger* correlation than CDKN2A (ρ = {h1_rho:.3f}), suggesting p21 may be the dominant arm in this dataset."
+            else:
+                vs_h1 = f" CDKN2A shows a stronger correlation (ρ = {h1_rho:.3f}), consistent with p16 being the primary driver."
+        if h11_rho > 0:
+            return True, (
+                f"**H11 supported.** CDKN1A expression positively correlates with IFN-γ score "
+                f"(ρ = {h11_rho:.3f}, n = {h11_n:,} — {strength}).{vs_h1}"
+            )
+        else:
+            return False, (
+                f"**H11 not supported.** CDKN1A expression is negatively correlated with IFN-γ score "
+                f"(ρ = {h11_rho:.3f}), contrary to the hypothesis."
+            )
+
+    def _h12_conclusion():
+        if h12_cold_rate is None:
+            return None, "RB1 alteration data not yet available — re-run notebooks 01 and 03."
+        diff = h12_cold_rate - h12_hot_rate
+        cdkn2a_context = ""
+        if h3_cold_rate is not None:
+            cdkn2a_context = (
+                f" For comparison, CDKN2A alteration rate difference is {h3_cold_rate - h3_hot_rate:+.1f} pp — "
+                f"{'RB1 shows a similar pattern' if diff * (h3_cold_rate - h3_hot_rate) > 0 else 'RB1 shows the opposite pattern'}, "
+                "which is expected given the 9p21 co-deletion locus."
+            )
+        if diff > 0:
+            return True, (
+                f"**H12 supported.** RB1 alteration is more frequent in cold tumors ({h12_cold_rate:.1f}%) "
+                f"than hot ({h12_hot_rate:.1f}%, Δ = {diff:+.1f} pp), extending the senescence bypass "
+                f"model to the full p16–CDK4/6–Rb axis.{cdkn2a_context}"
+            )
+        else:
+            return False, (
+                f"**H12 not supported.** RB1 alteration does not favour cold tumors "
+                f"(cold {h12_cold_rate:.1f}%, hot {h12_hot_rate:.1f}%, Δ = {diff:+.1f} pp).{cdkn2a_context}"
+            )
+
+    def _h13_conclusion():
+        if h13_rho is None:
+            return None, "SERPINE1_expr data not yet available — re-run notebook 03."
+        strength = "strong" if abs(h13_rho) > 0.4 else ("moderate" if abs(h13_rho) > 0.2 else "weak")
+        if h13_rho > 0:
+            return True, (
+                f"**H13 supported.** SERPINE1 expression positively correlates with IFN-γ score "
+                f"(ρ = {h13_rho:.3f}, n = {h13_n:,} — {strength} correlation), supporting SERPINE1/PAI-1 "
+                "as a SASP-linked immune-activity marker at the individual gene level."
+            )
+        else:
+            return False, (
+                f"**H13 not supported.** SERPINE1 expression is negatively correlated with IFN-γ score "
+                f"(ρ = {h13_rho:.3f}), contrary to the SASP-immune hypothesis."
+            )
+
+    def _h14_conclusion():
+        if h14_rho is None:
+            return None, "Age or CDKN2A data not yet available — re-run notebooks 01–03."
+        strength = "strong" if abs(h14_rho) > 0.4 else ("moderate" if abs(h14_rho) > 0.2 else "weak")
+        if h14_rho > 0:
+            return True, (
+                f"**H14 supported.** Age positively correlates with CDKN2A expression "
+                f"(ρ = {h14_rho:.3f}, n = {h14_n:,} — {strength} correlation), consistent with senescence "
+                "accumulating with age and validating CDKN2A as a biologically meaningful readout. "
+                "This also supports the decision to include age as a covariate in Cox models (H5)."
+            )
+        else:
+            return False, (
+                f"**H14 not supported.** CDKN2A expression does not increase with age "
+                f"(ρ = {h14_rho:.3f}). This may indicate that cancer-specific CDKN2A dysregulation "
+                "dominates the bulk RNA-seq signal over normal senescence accumulation."
+            )
+
+    def _h15_conclusion():
+        hi_diff, lo_diff = h15_p16high_diff, h15_p16low_diff
+        h_hi_hot, h_hi_cold, h_lo_hot, h_lo_cold = h15_vals
+        if hi_diff is None and lo_diff is None:
+            return None, "Survival or p16 status data not yet available — re-run notebooks 03 and 05."
+        hi_str = f"{hi_diff:+.2f} yrs" if hi_diff is not None else "N/A"
+        lo_str = f"{lo_diff:+.2f} yrs" if lo_diff is not None else "N/A"
+        interaction_present = (
+            hi_diff is not None and lo_diff is not None and
+            abs(hi_diff) > abs(lo_diff) and hi_diff > 0
+        )
+        if interaction_present:
+            return True, (
+                f"**H15 supported.** The hot−cold median OS gap is larger in p16-high tumors ({hi_str}) "
+                f"than p16-low ({lo_str}), consistent with p16/SASP mechanistically driving the immune-survival "
+                "axis. The hot/cold label is more prognostically informative when p16 is intact."
+            )
+        elif hi_diff is not None and hi_diff > 0:
+            return True, (
+                f"**H15 partially supported.** The hot−cold OS gap is positive in p16-high tumors ({hi_str}), "
+                f"but the interaction with p16-low ({lo_str}) is less clear."
+            )
+        else:
+            return False, (
+                f"**H15 not supported.** The hot−cold OS gap in p16-high tumors ({hi_str}) is not clearly "
+                f"larger than in p16-low ({lo_str}). Immune phenotype appears similarly prognostic regardless of p16 status."
+            )
+
+    def _h16_conclusion():
+        if h16_c2_med is None:
+            return None, "Thorsson immune subtype or SASP data not yet available — re-run notebooks 01 and 03."
+        rank_pos = list(h16_ranking.index).index("C2") + 1 if "C2" in h16_ranking.index else None
+        rank_str = f" (ranked #{rank_pos} of {len(h16_ranking)} subtypes)" if rank_pos else ""
+        if rank_pos == 1:
+            return True, (
+                f"**H16 supported.** Thorsson C2 (IFN-γ dominant) has the highest median SASP score "
+                f"({h16_c2_med:.3f} vs {h16_other_med:.3f} median of other subtypes){rank_str}. "
+                "This independently validates the SASP → immune-inflamed link using a classification "
+                "that was derived separately from the IFN-γ score used to define hot/cold."
+            )
+        elif rank_pos is not None and rank_pos <= 2:
+            return True, (
+                f"**H16 partially supported.** C2 ranks #{rank_pos} for SASP score{rank_str} "
+                f"(median {h16_c2_med:.3f}). The subtype ordering is broadly consistent with the hypothesis."
+            )
+        else:
+            return False, (
+                f"**H16 not supported.** C2 does not rank highest for SASP score{rank_str} "
+                f"(median {h16_c2_med:.3f}). "
+                + (f"Top subtype: {h16_ranking.index[0]} (median {h16_ranking.iloc[0]:.3f})." if h16_ranking is not None else "")
+            )
+
+    def _h17_conclusion():
+        if h17_hot_med is None:
+            return None, "SenMayo data not yet available — re-run notebook 03."
+        delta = h17_hot_med - h17_cold_med
+        sasp_context = ""
+        if h2_hot_med is not None:
+            sasp_context = (
+                f" For comparison, the custom SASP score gap is {h2_hot_med - h2_cold_med:+.3f}. "
+                f"{'SenMayo and SASP scores agree in direction.' if delta * (h2_hot_med - h2_cold_med) > 0 else 'SenMayo and SASP scores disagree in direction — worth investigating.'}"
+            )
+        if delta > 0:
+            return True, (
+                f"**H17 supported.** Hot tumors have higher SenMayo scores than cold "
+                f"(hot {h17_hot_med:.3f} vs cold {h17_cold_med:.3f}, Δ = {delta:+.3f}). "
+                "This replicates the SASP finding (H2) using an independent, peer-reviewed 125-gene signature "
+                f"(Saul et al. 2022, Nature Aging), strengthening confidence in the senescence–immune link.{sasp_context}"
+            )
+        else:
+            return False, (
+                f"**H17 not supported.** SenMayo scores do not favour hot tumors "
+                f"(hot {h17_hot_med:.3f} vs cold {h17_cold_med:.3f}, Δ = {delta:+.3f}). "
+                f"This is inconsistent with H2.{sasp_context}"
+            )
+
+    def _h18_conclusion():
+        if h18_hot_med is None:
+            return None, "hallmark_tnfa data not yet available — re-run notebook 03."
+        delta = h18_hot_med - h18_cold_med
+        if delta > 0:
+            return True, (
+                f"**H18 supported.** TNF-α/NF-κB signalling is higher in hot tumors "
+                f"(hot {h18_hot_med:.3f} vs cold {h18_cold_med:.3f}, Δ = {delta:+.3f}). "
+                "TNF-α is a primary SASP effector cytokine that drives NF-κB-mediated immune recruitment. "
+                "This provides mechanistic specificity for the SASP → hot phenotype link beyond the composite score."
+            )
+        else:
+            return False, (
+                f"**H18 not supported.** TNF-α/NF-κB activity does not favour hot tumors "
+                f"(hot {h18_hot_med:.3f} vs cold {h18_cold_med:.3f}, Δ = {delta:+.3f})."
+            )
+
+    def _h19_conclusion():
+        if h19_hot_med is None:
+            return None, "hallmark_inflammatory data not yet available — re-run notebook 03."
+        delta = h19_hot_med - h19_cold_med
+        if delta > 0:
+            return True, (
+                f"**H19 supported.** Inflammatory response activity is higher in hot tumors "
+                f"(hot {h19_hot_med:.3f} vs cold {h19_cold_med:.3f}, Δ = {delta:+.3f}). "
+                "The HALLMARK_INFLAMMATORY_RESPONSE gene set captures broad NF-κB and cytokine signalling "
+                "consistent with SASP-driven immune activation."
+            )
+        else:
+            return False, (
+                f"**H19 not supported.** Inflammatory response scores do not favour hot tumors "
+                f"(hot {h19_hot_med:.3f} vs cold {h19_cold_med:.3f}, Δ = {delta:+.3f})."
+            )
+
+    def _h20_conclusion():
+        if h20_rho is None:
+            return None, "senescence_dn data not yet available — re-run notebook 03."
+        strength = "strong" if abs(h20_rho) > 0.4 else ("moderate" if abs(h20_rho) > 0.2 else "weak")
+        if h20_rho < 0:
+            return True, (
+                f"**H20 supported.** The senescence-downregulated signature is negatively correlated with IFN-γ score "
+                f"(ρ = {h20_rho:.3f}, n = {h20_n:,} — {strength} inverse correlation). "
+                "Cells that have downregulated senescence-associated structural genes are found in more immune-inflamed tumors, "
+                "consistent with deep senescence activating innate immune signalling (e.g. via cGAS-STING)."
+                + (" Note: the effect is weak — purity confounding cannot be ruled out." if abs(h20_rho) < 0.1 else "")
+            )
+        else:
+            return False, (
+                f"**H20 not supported.** The senescence-down signature is positively correlated with IFN-γ score "
+                f"(ρ = {h20_rho:.3f}), contrary to the hypothesis."
+            )
+
+    def _h21_conclusion():
+        if h21_rho is None:
+            return None, "GDF15_expr data not yet available — re-run notebook 03."
+        strength = "strong" if abs(h21_rho) > 0.4 else ("moderate" if abs(h21_rho) > 0.2 else "weak")
+        if h21_rho > 0:
+            return True, (
+                f"**H21 supported.** GDF15 expression positively correlates with IFN-γ score "
+                f"(ρ = {h21_rho:.3f}, n = {h21_n:,} — {strength} correlation), consistent with "
+                "GDF15 acting as a SASP stress signal in immune-active tumors."
+            )
+        else:
+            return False, (
+                f"**H21 not supported.** GDF15 expression is negatively correlated with IFN-γ score "
+                f"(ρ = {h21_rho:.3f}, n = {h21_n:,}). "
+                "GDF15 may be more highly expressed in cold/proliferative tumors independently of SASP, "
+                "or its role may be immunosuppressive rather than pro-inflammatory in this context."
+            )
+
+    def _h22_conclusion():
+        if h22_cold_rate is None:
+            return None, "CDKN2A deep deletion data not yet available — re-run notebooks 01 and 03."
+        diff_deep  = h22_cold_rate - h22_hot_rate
+        diff_comp  = (h22_alt_cold - h22_alt_hot) if h22_alt_cold is not None else None
+        comp_str   = (
+            f" For context, the composite alteration rate (del + mut) is also higher in hot tumors "
+            f"({h22_alt_hot:.1f}%) than cold ({h22_alt_cold:.1f}%), suggesting the pattern is driven by "
+            "point mutations or low-level CNAs co-occurring with high TMB in hot tumors rather than "
+            "functional homozygous loss of p16."
+        ) if diff_comp is not None and diff_comp < 0 else ""
+        if diff_deep > 0:
+            return True, (
+                f"**H22 supported.** CDKN2A homozygous deep deletion is more frequent in cold tumors "
+                f"({h22_cold_rate:.1f}%) than hot ({h22_hot_rate:.1f}%, Δ = {diff_deep:+.1f} pp). "
+                "Biallelic loss of p16 — which fully abolishes the senescence brake — is specifically "
+                f"enriched in immune-excluded tumors.{comp_str}"
+            )
+        else:
+            return False, (
+                f"**H22 not supported.** CDKN2A deep deletion does not favour cold tumors "
+                f"(cold {h22_cold_rate:.1f}%, hot {h22_hot_rate:.1f}%, Δ = {diff_deep:+.1f} pp).{comp_str} "
+                "This suggests that when p16 is biallelically lost it does not consistently associate with "
+                "immune exclusion at pan-cancer scale — pan-cancer confounding by TMB and tumor grade is likely."
+            )
+
+
     # ── Display hypothesis cards ───────────────────────────────────────────────
     HYPOTHESES = [
         {
@@ -1335,340 +1670,6 @@ elif page == "Hypotheses":
             "conclusion_fn": _h22_conclusion,
         },
     ]
-
-    def _h6_conclusion():
-        if h6_cold_med is None:
-            return None, "SASP_suppressive data not yet available — re-run notebook 03."
-        delta = h6_cold_med - h6_hot_med
-        if delta > 0:
-            return True, (
-                f"**H6 supported.** Cold tumors have higher suppressive SASP scores than hot tumors "
-                f"(cold median {h6_cold_med:.3f} vs hot {h6_hot_med:.3f}, Δ = {delta:+.3f}), "
-                "suggesting immune exclusion is partly driven by active immunosuppressive SASP signalling."
-            )
-        else:
-            return False, (
-                f"**H6 not supported.** Suppressive SASP scores do not favour cold tumors "
-                f"(cold {h6_cold_med:.3f} vs hot {h6_hot_med:.3f}, Δ = {delta:+.3f})."
-            )
-
-    def _h7_conclusion():
-        if h7_hot_med is None:
-            return None, "TMB data not yet available — re-run notebook 01."
-        direction_ok = h7_hot_med > h7_cold_med
-        rho_str = f"  Spearman ρ(TMB, IFN-γ) = {h7_rho:.3f}." if h7_rho is not None else ""
-        if direction_ok:
-            return True, (
-                f"**H7 supported.** Hot tumors have higher median TMB than cold tumors "
-                f"(hot {h7_hot_med:.1f} vs cold {h7_cold_med:.1f} mut/Mb).{rho_str} "
-                "This is consistent with DNA damage driving both mutational burden and p16-mediated senescence."
-            )
-        else:
-            return False, (
-                f"**H7 not supported.** TMB does not differ in the expected direction "
-                f"(hot {h7_hot_med:.1f} vs cold {h7_cold_med:.1f} mut/Mb).{rho_str}"
-            )
-
-    def _h8_conclusion():
-        if h8_cold_rate is None:
-            return None, "TP53 alteration data not yet available — re-run notebooks 01 and 03."
-        diff = h8_cold_rate - h8_hot_rate
-        if diff > 0:
-            return True, (
-                f"**H8 supported.** TP53 alterations are more frequent in cold tumors "
-                f"({h8_cold_rate:.1f}%) than hot ({h8_hot_rate:.1f}%, Δ = {diff:+.1f} pp), "
-                "consistent with TP53 loss impairing senescence-associated immune signalling."
-            )
-        else:
-            return False, (
-                f"**H8 not supported.** TP53 alteration rates do not favour cold tumors "
-                f"(cold {h8_cold_rate:.1f}%, hot {h8_hot_rate:.1f}%, Δ = {diff:+.1f} pp). "
-                "Note: TP53 gain-of-function mutations in hot tumors may confound a simple deletion/mutation count."
-            )
-
-    def _h9_conclusion():
-        if h9_rho is None:
-            return None, "LMNB1_expr data not yet available — re-run notebook 03."
-        strength = "strong" if abs(h9_rho) > 0.4 else ("moderate" if abs(h9_rho) > 0.2 else "weak")
-        if h9_rho < 0:
-            return True, (
-                f"**H9 supported.** LMNB1 expression is negatively correlated with IFN-γ score "
-                f"(ρ = {h9_rho:.3f}, n = {h9_n:,} — {strength} inverse correlation), consistent with "
-                "nuclear lamina loss in deeply senescent cells activating cGAS-STING and SASP."
-            )
-        else:
-            return False, (
-                f"**H9 not supported.** LMNB1 expression is positively correlated with IFN-γ score "
-                f"(ρ = {h9_rho:.3f}, n = {h9_n:,}), contrary to the hypothesis."
-            )
-
-    def _h10_conclusion():
-        if h10_hot_med is None:
-            return None, "Tumor purity data not yet available — re-run notebook 01."
-        rho_str = f"  Spearman ρ(purity, IFN-γ) = {h10_rho:.3f}." if h10_rho is not None else ""
-        diff = h10_cold_med - h10_hot_med
-        if h10_cold_med > h10_hot_med:
-            return True, (
-                f"**H10 confirmed.** Cold tumors have higher median purity than hot tumors "
-                f"(cold {h10_cold_med:.2f} vs hot {h10_hot_med:.2f}, Δ = {diff:+.2f}).{rho_str} "
-                "This confirms that purity is a meaningful confound: part of the hot/cold signal reflects "
-                "immune cell dilution rather than intrinsic tumour biology. Purity is included as a Cox covariate."
-            )
-        else:
-            return False, (
-                f"**H10 not confirmed.** Purity does not differ in the expected direction "
-                f"(cold {h10_cold_med:.2f} vs hot {h10_hot_med:.2f}).{rho_str}"
-            )
-
-    def _h11_conclusion():
-        if h11_rho is None:
-            return None, "CDKN1A_expr data not yet available — re-run notebook 03."
-        strength = "strong" if abs(h11_rho) > 0.4 else ("moderate" if abs(h11_rho) > 0.2 else "weak")
-        vs_h1 = ""
-        if h1_rho is not None:
-            if abs(h11_rho) > abs(h1_rho):
-                vs_h1 = f" CDKN1A shows a *stronger* correlation than CDKN2A (ρ = {h1_rho:.3f}), suggesting p21 may be the dominant arm in this dataset."
-            else:
-                vs_h1 = f" CDKN2A shows a stronger correlation (ρ = {h1_rho:.3f}), consistent with p16 being the primary driver."
-        if h11_rho > 0:
-            return True, (
-                f"**H11 supported.** CDKN1A expression positively correlates with IFN-γ score "
-                f"(ρ = {h11_rho:.3f}, n = {h11_n:,} — {strength}).{vs_h1}"
-            )
-        else:
-            return False, (
-                f"**H11 not supported.** CDKN1A expression is negatively correlated with IFN-γ score "
-                f"(ρ = {h11_rho:.3f}), contrary to the hypothesis."
-            )
-
-    def _h12_conclusion():
-        if h12_cold_rate is None:
-            return None, "RB1 alteration data not yet available — re-run notebooks 01 and 03."
-        diff = h12_cold_rate - h12_hot_rate
-        cdkn2a_context = ""
-        if h3_cold_rate is not None:
-            cdkn2a_context = (
-                f" For comparison, CDKN2A alteration rate difference is {h3_cold_rate - h3_hot_rate:+.1f} pp — "
-                f"{'RB1 shows a similar pattern' if diff * (h3_cold_rate - h3_hot_rate) > 0 else 'RB1 shows the opposite pattern'}, "
-                "which is expected given the 9p21 co-deletion locus."
-            )
-        if diff > 0:
-            return True, (
-                f"**H12 supported.** RB1 alteration is more frequent in cold tumors ({h12_cold_rate:.1f}%) "
-                f"than hot ({h12_hot_rate:.1f}%, Δ = {diff:+.1f} pp), extending the senescence bypass "
-                f"model to the full p16–CDK4/6–Rb axis.{cdkn2a_context}"
-            )
-        else:
-            return False, (
-                f"**H12 not supported.** RB1 alteration does not favour cold tumors "
-                f"(cold {h12_cold_rate:.1f}%, hot {h12_hot_rate:.1f}%, Δ = {diff:+.1f} pp).{cdkn2a_context}"
-            )
-
-    def _h13_conclusion():
-        if h13_rho is None:
-            return None, "SERPINE1_expr data not yet available — re-run notebook 03."
-        strength = "strong" if abs(h13_rho) > 0.4 else ("moderate" if abs(h13_rho) > 0.2 else "weak")
-        if h13_rho > 0:
-            return True, (
-                f"**H13 supported.** SERPINE1 expression positively correlates with IFN-γ score "
-                f"(ρ = {h13_rho:.3f}, n = {h13_n:,} — {strength} correlation), supporting SERPINE1/PAI-1 "
-                "as a SASP-linked immune-activity marker at the individual gene level."
-            )
-        else:
-            return False, (
-                f"**H13 not supported.** SERPINE1 expression is negatively correlated with IFN-γ score "
-                f"(ρ = {h13_rho:.3f}), contrary to the SASP-immune hypothesis."
-            )
-
-    def _h14_conclusion():
-        if h14_rho is None:
-            return None, "Age or CDKN2A data not yet available — re-run notebooks 01–03."
-        strength = "strong" if abs(h14_rho) > 0.4 else ("moderate" if abs(h14_rho) > 0.2 else "weak")
-        if h14_rho > 0:
-            return True, (
-                f"**H14 supported.** Age positively correlates with CDKN2A expression "
-                f"(ρ = {h14_rho:.3f}, n = {h14_n:,} — {strength} correlation), consistent with senescence "
-                "accumulating with age and validating CDKN2A as a biologically meaningful readout. "
-                "This also supports the decision to include age as a covariate in Cox models (H5)."
-            )
-        else:
-            return False, (
-                f"**H14 not supported.** CDKN2A expression does not increase with age "
-                f"(ρ = {h14_rho:.3f}). This may indicate that cancer-specific CDKN2A dysregulation "
-                "dominates the bulk RNA-seq signal over normal senescence accumulation."
-            )
-
-    def _h15_conclusion():
-        hi_diff, lo_diff = h15_p16high_diff, h15_p16low_diff
-        h_hi_hot, h_hi_cold, h_lo_hot, h_lo_cold = h15_vals
-        if hi_diff is None and lo_diff is None:
-            return None, "Survival or p16 status data not yet available — re-run notebooks 03 and 05."
-        hi_str = f"{hi_diff:+.2f} yrs" if hi_diff is not None else "N/A"
-        lo_str = f"{lo_diff:+.2f} yrs" if lo_diff is not None else "N/A"
-        interaction_present = (
-            hi_diff is not None and lo_diff is not None and
-            abs(hi_diff) > abs(lo_diff) and hi_diff > 0
-        )
-        if interaction_present:
-            return True, (
-                f"**H15 supported.** The hot−cold median OS gap is larger in p16-high tumors ({hi_str}) "
-                f"than p16-low ({lo_str}), consistent with p16/SASP mechanistically driving the immune-survival "
-                "axis. The hot/cold label is more prognostically informative when p16 is intact."
-            )
-        elif hi_diff is not None and hi_diff > 0:
-            return True, (
-                f"**H15 partially supported.** The hot−cold OS gap is positive in p16-high tumors ({hi_str}), "
-                f"but the interaction with p16-low ({lo_str}) is less clear."
-            )
-        else:
-            return False, (
-                f"**H15 not supported.** The hot−cold OS gap in p16-high tumors ({hi_str}) is not clearly "
-                f"larger than in p16-low ({lo_str}). Immune phenotype appears similarly prognostic regardless of p16 status."
-            )
-
-    def _h16_conclusion():
-        if h16_c2_med is None:
-            return None, "Thorsson immune subtype or SASP data not yet available — re-run notebooks 01 and 03."
-        rank_pos = list(h16_ranking.index).index("C2") + 1 if "C2" in h16_ranking.index else None
-        rank_str = f" (ranked #{rank_pos} of {len(h16_ranking)} subtypes)" if rank_pos else ""
-        if rank_pos == 1:
-            return True, (
-                f"**H16 supported.** Thorsson C2 (IFN-γ dominant) has the highest median SASP score "
-                f"({h16_c2_med:.3f} vs {h16_other_med:.3f} median of other subtypes){rank_str}. "
-                "This independently validates the SASP → immune-inflamed link using a classification "
-                "that was derived separately from the IFN-γ score used to define hot/cold."
-            )
-        elif rank_pos is not None and rank_pos <= 2:
-            return True, (
-                f"**H16 partially supported.** C2 ranks #{rank_pos} for SASP score{rank_str} "
-                f"(median {h16_c2_med:.3f}). The subtype ordering is broadly consistent with the hypothesis."
-            )
-        else:
-            return False, (
-                f"**H16 not supported.** C2 does not rank highest for SASP score{rank_str} "
-                f"(median {h16_c2_med:.3f}). "
-                + (f"Top subtype: {h16_ranking.index[0]} (median {h16_ranking.iloc[0]:.3f})." if h16_ranking is not None else "")
-            )
-
-    def _h17_conclusion():
-        if h17_hot_med is None:
-            return None, "SenMayo data not yet available — re-run notebook 03."
-        delta = h17_hot_med - h17_cold_med
-        sasp_context = ""
-        if h2_hot_med is not None:
-            sasp_context = (
-                f" For comparison, the custom SASP score gap is {h2_hot_med - h2_cold_med:+.3f}. "
-                f"{'SenMayo and SASP scores agree in direction.' if delta * (h2_hot_med - h2_cold_med) > 0 else 'SenMayo and SASP scores disagree in direction — worth investigating.'}"
-            )
-        if delta > 0:
-            return True, (
-                f"**H17 supported.** Hot tumors have higher SenMayo scores than cold "
-                f"(hot {h17_hot_med:.3f} vs cold {h17_cold_med:.3f}, Δ = {delta:+.3f}). "
-                "This replicates the SASP finding (H2) using an independent, peer-reviewed 125-gene signature "
-                f"(Saul et al. 2022, Nature Aging), strengthening confidence in the senescence–immune link.{sasp_context}"
-            )
-        else:
-            return False, (
-                f"**H17 not supported.** SenMayo scores do not favour hot tumors "
-                f"(hot {h17_hot_med:.3f} vs cold {h17_cold_med:.3f}, Δ = {delta:+.3f}). "
-                f"This is inconsistent with H2.{sasp_context}"
-            )
-
-    def _h18_conclusion():
-        if h18_hot_med is None:
-            return None, "hallmark_tnfa data not yet available — re-run notebook 03."
-        delta = h18_hot_med - h18_cold_med
-        if delta > 0:
-            return True, (
-                f"**H18 supported.** TNF-α/NF-κB signalling is higher in hot tumors "
-                f"(hot {h18_hot_med:.3f} vs cold {h18_cold_med:.3f}, Δ = {delta:+.3f}). "
-                "TNF-α is a primary SASP effector cytokine that drives NF-κB-mediated immune recruitment. "
-                "This provides mechanistic specificity for the SASP → hot phenotype link beyond the composite score."
-            )
-        else:
-            return False, (
-                f"**H18 not supported.** TNF-α/NF-κB activity does not favour hot tumors "
-                f"(hot {h18_hot_med:.3f} vs cold {h18_cold_med:.3f}, Δ = {delta:+.3f})."
-            )
-
-    def _h19_conclusion():
-        if h19_hot_med is None:
-            return None, "hallmark_inflammatory data not yet available — re-run notebook 03."
-        delta = h19_hot_med - h19_cold_med
-        if delta > 0:
-            return True, (
-                f"**H19 supported.** Inflammatory response activity is higher in hot tumors "
-                f"(hot {h19_hot_med:.3f} vs cold {h19_cold_med:.3f}, Δ = {delta:+.3f}). "
-                "The HALLMARK_INFLAMMATORY_RESPONSE gene set captures broad NF-κB and cytokine signalling "
-                "consistent with SASP-driven immune activation."
-            )
-        else:
-            return False, (
-                f"**H19 not supported.** Inflammatory response scores do not favour hot tumors "
-                f"(hot {h19_hot_med:.3f} vs cold {h19_cold_med:.3f}, Δ = {delta:+.3f})."
-            )
-
-    def _h20_conclusion():
-        if h20_rho is None:
-            return None, "senescence_dn data not yet available — re-run notebook 03."
-        strength = "strong" if abs(h20_rho) > 0.4 else ("moderate" if abs(h20_rho) > 0.2 else "weak")
-        if h20_rho < 0:
-            return True, (
-                f"**H20 supported.** The senescence-downregulated signature is negatively correlated with IFN-γ score "
-                f"(ρ = {h20_rho:.3f}, n = {h20_n:,} — {strength} inverse correlation). "
-                "Cells that have downregulated senescence-associated structural genes are found in more immune-inflamed tumors, "
-                "consistent with deep senescence activating innate immune signalling (e.g. via cGAS-STING)."
-                + (" Note: the effect is weak — purity confounding cannot be ruled out." if abs(h20_rho) < 0.1 else "")
-            )
-        else:
-            return False, (
-                f"**H20 not supported.** The senescence-down signature is positively correlated with IFN-γ score "
-                f"(ρ = {h20_rho:.3f}), contrary to the hypothesis."
-            )
-
-    def _h21_conclusion():
-        if h21_rho is None:
-            return None, "GDF15_expr data not yet available — re-run notebook 03."
-        strength = "strong" if abs(h21_rho) > 0.4 else ("moderate" if abs(h21_rho) > 0.2 else "weak")
-        if h21_rho > 0:
-            return True, (
-                f"**H21 supported.** GDF15 expression positively correlates with IFN-γ score "
-                f"(ρ = {h21_rho:.3f}, n = {h21_n:,} — {strength} correlation), consistent with "
-                "GDF15 acting as a SASP stress signal in immune-active tumors."
-            )
-        else:
-            return False, (
-                f"**H21 not supported.** GDF15 expression is negatively correlated with IFN-γ score "
-                f"(ρ = {h21_rho:.3f}, n = {h21_n:,}). "
-                "GDF15 may be more highly expressed in cold/proliferative tumors independently of SASP, "
-                "or its role may be immunosuppressive rather than pro-inflammatory in this context."
-            )
-
-    def _h22_conclusion():
-        if h22_cold_rate is None:
-            return None, "CDKN2A deep deletion data not yet available — re-run notebooks 01 and 03."
-        diff_deep  = h22_cold_rate - h22_hot_rate
-        diff_comp  = (h22_alt_cold - h22_alt_hot) if h22_alt_cold is not None else None
-        comp_str   = (
-            f" For context, the composite alteration rate (del + mut) is also higher in hot tumors "
-            f"({h22_alt_hot:.1f}%) than cold ({h22_alt_cold:.1f}%), suggesting the pattern is driven by "
-            "point mutations or low-level CNAs co-occurring with high TMB in hot tumors rather than "
-            "functional homozygous loss of p16."
-        ) if diff_comp is not None and diff_comp < 0 else ""
-        if diff_deep > 0:
-            return True, (
-                f"**H22 supported.** CDKN2A homozygous deep deletion is more frequent in cold tumors "
-                f"({h22_cold_rate:.1f}%) than hot ({h22_hot_rate:.1f}%, Δ = {diff_deep:+.1f} pp). "
-                "Biallelic loss of p16 — which fully abolishes the senescence brake — is specifically "
-                f"enriched in immune-excluded tumors.{comp_str}"
-            )
-        else:
-            return False, (
-                f"**H22 not supported.** CDKN2A deep deletion does not favour cold tumors "
-                f"(cold {h22_cold_rate:.1f}%, hot {h22_hot_rate:.1f}%, Δ = {diff_deep:+.1f} pp).{comp_str} "
-                "This suggests that when p16 is biallelically lost it does not consistently associate with "
-                "immune exclusion at pan-cancer scale — pan-cancer confounding by TMB and tumor grade is likely."
-            )
 
     for h in HYPOTHESES:
         supported, conclusion_text = h["conclusion_fn"]()
