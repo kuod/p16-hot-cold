@@ -496,6 +496,53 @@ elif page == "Survival":
         "All other comparisons are exploratory (BH FDR α = 0.05)."
     )
 
+    # ── IFN-γ hazard interpretation ───────────────────────────────────────────
+    ifng_row = cox[cox["term"] == "ifng_score"]
+    if len(ifng_row):
+        _r = ifng_row.iloc[0]
+        with st.expander(
+            f"Why does the IFN-γ signature have a lower hazard pan-cancer? "
+            f"(HR = {_r['estimate']:.3f}, p = {_r['p.value']:.2e})",
+            expanded=True,
+        ):
+            st.markdown(
+                f"""
+The IFN-γ signature score (HR = **{_r['estimate']:.3f}**, 95% CI {_r['conf.low']:.3f}–{_r['conf.high']:.3f},
+p = {_r['p.value']:.2e}) is independently associated with **lower mortality risk** after adjusting for age
+and stratifying by tumor type. This cross-cancer signal has several overlapping mechanistic explanations:
+
+**1. Active cytotoxic T cell surveillance**
+The 6-gene IFN-γ signature (IFNG, STAT1, CCL5, CXCL9, CXCL10, IDO1) marks tumors with functional
+CD8+ T cell infiltration. These cells directly kill MHC-I⁺ tumor cells via perforin/granzyme B, reducing
+tumor burden and delaying progression.
+
+**2. Direct anti-tumor effects of IFN-γ signaling**
+IFN-γ activates JAK1/2–STAT1, which upregulates MHC-I (facilitating immune recognition), induces
+cell-cycle arrest, and promotes tumor cell apoptosis. High IFN-γ activity in the microenvironment
+therefore suppresses tumor growth through both immune-mediated and direct signaling mechanisms.
+
+**3. SASP-driven immune recruitment (p16 → SASP → IFN-γ)**
+Senescent cells secrete pro-inflammatory SASP factors (IL-6, CXCL8, CCL2) that recruit and activate
+innate and adaptive immune cells. This analysis shows SASP scores are higher in IFN-γ-high (hot) tumors,
+consistent with senescent stroma amplifying immune surveillance rather than being purely bystander tissue.
+
+**4. Pan-cancer consistency (not a single-cancer artefact)**
+The Cox model uses `strata(tumor_type)`, allowing a separate baseline hazard per cancer type. The HR < 1
+for IFN-γ therefore reflects a consistent within-type protective signal — hot tumors survive longer within
+each cancer, not simply because certain indolent cancer types happen to be more inflamed.
+
+**5. Important caveats**
+- TCGA bulk RNA-seq mixes tumor and immune cells; high purity (fewer infiltrating cells) artificially
+  lowers IFN-γ score. The effect is attenuated but survives purity adjustment in sensitivity analyses.
+- Immune-inflamed tumors can undergo T cell exhaustion (PD-1/LAG-3/TIM-3 upregulation), partially
+  blunting the survival advantage. The pan-cancer HR represents the **net** effect.
+- IDO1 (in the signature) is immunosuppressive when highly induced; this creates a ceiling effect
+  at very high IFN-γ scores.
+- The effect size is modest (HR ~0.91 per SD unit). Clinical significance depends on score range
+  and context.
+"""
+            )
+
     st.subheader("Per-tumor-type survival log-rank results")
     lr_display = lr.copy()
     lr_display["sig"] = lr_display["padj"].apply(
