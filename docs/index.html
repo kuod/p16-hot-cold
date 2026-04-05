@@ -232,16 +232,82 @@
     tbody td { padding: 0.65rem 1rem; color: #374151; border-bottom: 1px solid #e5e7eb; }
     tbody tr:last-child td { border-bottom: none; }
 
-    /* ── Senescence background / Mermaid ──────────────────────── */
-    .mermaid-wrap {
+    /* ── Senescence background / pathway diagram ──────────────── */
+    .pathway-wrap {
       background: #fff;
       border-radius: 8px;
-      padding: 1.5rem 1rem;
+      padding: 1.5rem 1.25rem 1.25rem;
       box-shadow: 0 1px 5px rgba(0,0,0,0.08);
       overflow-x: auto;
     }
-    .mermaid-wrap .mermaid { display: block; }
-    .mermaid-wrap .mermaid svg { width: 100%; height: auto; min-width: 700px; }
+    .pathway {
+      display: flex;
+      align-items: stretch;
+      min-width: max-content;
+    }
+    .pw-arrow {
+      display: flex;
+      align-items: center;
+      padding: 0 0.35rem;
+      font-size: 1.6rem;
+      color: #9ca3af;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .pw-axes {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .pw-stage {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-top: 3px solid #6b7280;
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      min-width: 155px;
+      max-width: 210px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .pw-stage h4 {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #6b7280;
+      margin-bottom: 0.45rem;
+    }
+    .pw-stage p { font-size: 0.82rem; color: #4b5563; margin-top: 0.35rem; margin-bottom: 0; }
+    .pw-stage.eff       { border-top-color: #15803d; }
+    .pw-stage.sasp      { border-top-color: #c2410c; }
+    .pw-stage.ifng      { border-top-color: #1d4ed8; }
+    .pw-stage.neutral   { border-top-color: #475569; }
+    .pw-stage.hot       { border-top-color: #dc2626; background: #fef2f2; }
+    .pw-stage.cold      { border-top-color: #2563eb; background: #eff6ff; }
+    /* deletion branch */
+    .pathway-deletion {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px dashed #e2e8f0;
+      font-size: 0.82rem;
+      color: #6b7280;
+      min-width: max-content;
+    }
+    .pw-del-spacer { flex-shrink: 0; }
+    .pw-dashed-arrow { color: #94a3b8; font-size: 1rem; flex-shrink: 0; }
+    .pw-del-note {
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.82rem;
+      color: #78350f;
+      white-space: nowrap;
+    }
     .gene-legend {
       display: flex;
       flex-wrap: wrap;
@@ -328,15 +394,6 @@
     footer a:hover { color: #bfdbfe; }
     footer .footer-links { margin-bottom: 0.5rem; display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
   </style>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'default',
-      flowchart: { curve: 'basis', useMaxWidth: false },
-      themeVariables: { fontSize: '17px' }
-    });
-  </script>
 </head>
 <body>
 
@@ -413,67 +470,119 @@
       and tumors remain "cold."
     </p>
 
-    <div class="mermaid-wrap">
-      <pre class="mermaid">
-flowchart LR
-    stress(["⚡ Oncogenic stress\nDNA damage\nReplicative exhaustion"])
+    <div class="pathway-wrap">
 
-    subgraph p16path["p16 / RB1 axis"]
-        direction TB
-        p16["CDKN2A · p16"]:::eff
-        cdk46(["CDK4 / CDK6\n🚫 inhibited"])
-        rb1["RB1"]:::eff
-        e2f["E2F — repressed"]
-        p16 -->|inhibits| cdk46
-        cdk46 -. "normally\nphosphorylates" .-> rb1
-        rb1 -->|sequesters| e2f
-    end
+      <!-- Main pathway row -->
+      <div class="pathway">
 
-    subgraph p53path["p53 / p21 axis"]
-        direction TB
-        atm["ATM · ATR"]
-        p53["TP53"]:::eff
-        p21["CDKN1A · p21"]:::eff
-        atm --> p53 --> p21
-    end
+        <!-- Stage 1: Stress trigger -->
+        <div class="pw-stage neutral">
+          <h4>Trigger</h4>
+          ⚡ Oncogenic stress<br>DNA damage<br>Replicative exhaustion
+        </div>
 
-    arrest{{"Cell cycle\narrest"}}
+        <div class="pw-arrow">→</div>
 
-    subgraph saspbox["SASP — Senescence-Associated Secretory Phenotype"]
-        direction TB
-        s1["IL-6 · IL-1α · IL-1β · CXCL8"]:::sasp
-        s2["CCL2 · CCL7 · CXCL1 · CXCL2 · CXCL3"]:::sasp
-        s3["MMP1/3/9/13 · VEGFA · IGFBP3/7"]:::sasp
-    end
+        <!-- Stage 2: Two parallel senescence axes -->
+        <div class="pw-axes">
+          <div class="pw-stage eff">
+            <h4>p16 / RB1 axis</h4>
+            <span class="pill pill-eff">CDKN2A</span> inhibits CDK4/CDK6
+            <p>→ RB1 hypophosphorylated → <strong>E2F repressed</strong></p>
+          </div>
+          <div class="pw-stage eff">
+            <h4>p53 / p21 axis</h4>
+            ATM · ATR → <span class="pill pill-eff">TP53</span> → <span class="pill pill-eff">CDKN1A</span>
+            <p>→ CDK2 inhibited</p>
+          </div>
+        </div>
 
-    cd8["CD8⁺ T cells\nNK cells"]
+        <div class="pw-arrow">→</div>
 
-    subgraph ifngbox["IFN-γ Signature — hot/cold classifier"]
-        direction TB
-        i1["IFNG · STAT1 · CCL5"]:::ifng
-        i2["CXCL9 · CXCL10 · IDO1"]:::ifng
-    end
+        <!-- Stage 3: Arrest -->
+        <div class="pw-stage neutral" style="display:flex;align-items:center;justify-content:center;text-align:center;font-weight:600;">
+          <div>
+            <h4>Outcome</h4>
+            Cell cycle<br>arrest
+          </div>
+        </div>
 
-    hot(["🔴 Hot tumor\nbetter survival"])
-    del(["CDKN2A deletion\n40% of TCGA samples\nenriched in cold tumors"])
-    cold(["🔵 Cold tumor\nworse survival"])
+        <div class="pw-arrow">→</div>
 
-    stress --> p16path & p53path
-    p21 -->|inhibits CDK2| arrest
-    e2f --> arrest
-    arrest --> saspbox
-    saspbox --> cd8
-    cd8 --> ifngbox
-    ifngbox --> hot
+        <!-- Stage 4: SASP -->
+        <div class="pw-stage sasp">
+          <h4>SASP secretion</h4>
+          <div class="pills" style="gap:0.3rem;">
+            <span class="pill pill-sasp">IL6</span>
+            <span class="pill pill-sasp">IL1A</span>
+            <span class="pill pill-sasp">IL1B</span>
+            <span class="pill pill-sasp">CXCL8</span>
+            <span class="pill pill-sasp">CCL2</span>
+            <span class="pill pill-sasp">CCL7</span>
+            <span class="pill pill-sasp">CXCL1</span>
+            <span class="pill pill-sasp">CXCL2</span>
+            <span class="pill pill-sasp">CXCL3</span>
+            <span class="pill pill-sasp">MMP1</span>
+            <span class="pill pill-sasp">MMP3</span>
+            <span class="pill pill-sasp">MMP9</span>
+            <span class="pill pill-sasp">MMP13</span>
+            <span class="pill pill-sasp">VEGFA</span>
+            <span class="pill pill-sasp">IGFBP3</span>
+            <span class="pill pill-sasp">IGFBP7</span>
+          </div>
+        </div>
 
-    stress -. "loss of p16" .-> del
-    del --> cold
+        <div class="pw-arrow">→</div>
 
-    classDef eff  fill:#bbf7d0,stroke:#15803d,color:#14532d,font-weight:600
-    classDef sasp fill:#fed7aa,stroke:#c2410c,color:#7c2d12,font-weight:600
-    classDef ifng fill:#bfdbfe,stroke:#1d4ed8,color:#1e3a8a,font-weight:600
-      </pre>
-    </div>
+        <!-- Stage 5: Immune infiltration -->
+        <div class="pw-stage neutral" style="text-align:center;">
+          <h4>Immune recruitment</h4>
+          CD8⁺ T cells<br>NK cells<br>Macrophages
+        </div>
+
+        <div class="pw-arrow">→</div>
+
+        <!-- Stage 6: IFN-γ signature -->
+        <div class="pw-stage ifng">
+          <h4>IFN-γ signature</h4>
+          <div class="pills" style="gap:0.3rem;">
+            <span class="pill pill-ifng">IFNG</span>
+            <span class="pill pill-ifng">STAT1</span>
+            <span class="pill pill-ifng">CCL5</span>
+            <span class="pill pill-ifng">CXCL9</span>
+            <span class="pill pill-ifng">CXCL10</span>
+            <span class="pill pill-ifng">IDO1</span>
+          </div>
+          <p style="margin-top:.4rem;font-size:.78rem;color:#374151;">hot / cold classifier</p>
+        </div>
+
+        <div class="pw-arrow">→</div>
+
+        <!-- Stage 7: Hot tumor outcome -->
+        <div class="pw-stage hot" style="text-align:center;display:flex;align-items:center;justify-content:center;">
+          <div>
+            <h4>Outcome</h4>
+            🔴 <strong>Hot tumor</strong><br>
+            <span style="font-size:.8rem;color:#991b1b;">better survival</span>
+          </div>
+        </div>
+
+      </div><!-- /.pathway -->
+
+      <!-- Deletion / cold branch -->
+      <div class="pathway-deletion">
+        <span class="pw-del-spacer" style="width:175px;"></span>
+        <span class="pw-dashed-arrow">╌╌╌ loss of p16 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</span>
+        <span class="pw-del-note">CDKN2A deletion · 40% of TCGA · enriched in cold tumors</span>
+        <span class="pw-dashed-arrow">╌╌→</span>
+        <div class="pw-stage cold" style="text-align:center;min-width:130px;">
+          <h4>Outcome</h4>
+          🔵 <strong>Cold tumor</strong><br>
+          <span style="font-size:.8rem;color:#1e40af;">worse survival</span>
+        </div>
+      </div>
+
+    </div><!-- /.pathway-wrap -->
 
     <!-- Gene colour key -->
     <div class="gene-legend">
