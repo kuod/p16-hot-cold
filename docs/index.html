@@ -125,6 +125,24 @@
       color: #78350f;
     }
     .finding-card .interp { font-size: 0.9rem; color: #4b5563; }
+    .finding-card .figs { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.7rem; }
+    .finding-card .figs figure { margin: 0; }
+    .finding-card .figs a { display: block; }
+    .finding-card .figs img {
+      width: 100%;
+      border-radius: 5px;
+      border: 1px solid #e5e7eb;
+      display: block;
+      cursor: zoom-in;
+      transition: box-shadow 0.15s;
+    }
+    .finding-card .figs img:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.15); }
+    .finding-card .figs figcaption {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-top: 0.3rem;
+      font-style: italic;
+    }
 
     /* ── Tables ────────────────────────────────────────────────── */
     .table-wrap { overflow-x: auto; }
@@ -282,6 +300,20 @@
           and bladder cancer (BLCA); weakest in GBM and prostate (PRAD), consistent with known
           tumor biology.
         </p>
+        <div class="figs">
+          <figure>
+            <a href="figures/cdkn2a_vs_ifng_scatter.png" target="_blank">
+              <img src="figures/cdkn2a_vs_ifng_scatter.png" alt="Pan-cancer scatter: CDKN2A expression vs IFN-γ score" />
+            </a>
+            <figcaption>Pan-cancer scatter (n ≈ 9,900). ρ = 0.16, p = 1.7×10⁻⁵⁶.</figcaption>
+          </figure>
+          <figure>
+            <a href="figures/cdkn2a_ifng_corr_by_type.png" target="_blank">
+              <img src="figures/cdkn2a_ifng_corr_by_type.png" alt="Per-tumor-type Spearman correlation: CDKN2A vs IFN-γ" />
+            </a>
+            <figcaption>Per-tumor-type Spearman ρ. Most cancer types show a positive correlation; negative correlations cluster in immunologically distinct tumors (DLBCL, GBM).</figcaption>
+          </figure>
+        </div>
       </div>
 
       <div class="finding-card confirmed">
@@ -293,6 +325,14 @@
           immune-inflamed tumors, consistent with SASP cytokines (IL-6, CXCL8, CCL2) driving
           T cell recruitment.
         </p>
+        <div class="figs">
+          <figure>
+            <a href="figures/sasp_score_hot_cold.png" target="_blank">
+              <img src="figures/sasp_score_hot_cold.png" alt="SASP ssGSEA score distribution by immune phenotype" />
+            </a>
+            <figcaption>SASP ssGSEA score distribution across hot, intermediate, and cold tumors. Kruskal-Wallis p = 9.5×10⁻²⁵⁷.</figcaption>
+          </figure>
+        </div>
       </div>
 
       <div class="finding-card confirmed">
@@ -304,6 +344,14 @@
           suggesting that CDKN2A deletion contributes to — rather than simply co-occurs with —
           immune exclusion.
         </p>
+        <div class="figs">
+          <figure>
+            <a href="figures/alteration_hot_cold_grouped_bar.png" target="_blank">
+              <img src="figures/alteration_hot_cold_grouped_bar.png" alt="Senescence gene alteration rates by immune phenotype" />
+            </a>
+            <figcaption>Alteration rates (deletion + mutation) for senescence pathway genes across cold, intermediate, and hot tumors. All genes significant at primary threshold (χ², ** p &lt; 0.01).</figcaption>
+          </figure>
+        </div>
       </div>
 
       <div class="finding-card confirmed">
@@ -314,6 +362,14 @@
           The combined senescence + immune phenotype is more prognostic than either feature alone.
           Effect is strongest in LGG (p &lt; 10<sup>&minus;15</sup>), KIRP, PAAD, and LUAD.
         </p>
+        <div class="figs">
+          <figure>
+            <a href="figures/km_4group.png" target="_blank">
+              <img src="figures/km_4group.png" alt="Kaplan-Meier overall survival: immune tertile × p16 high/low" />
+            </a>
+            <figcaption>Kaplan-Meier OS curves stratified by immune phenotype (cold/intermediate/hot) and p16 status (high/low within tumor type). Log-rank p = 3.3×10⁻³.</figcaption>
+          </figure>
+        </div>
       </div>
 
       <div class="finding-card partial">
@@ -330,6 +386,14 @@
           independent protective effect (HR 0.935, p = 0.002); SERPINE1 shows independent risk
           (HR 1.161, p &lt; 0.001).
         </p>
+        <div class="figs">
+          <figure>
+            <a href="figures/cox_forest_plot.png" target="_blank">
+              <img src="figures/cox_forest_plot.png" alt="Cox proportional hazards forest plot" />
+            </a>
+            <figcaption>Cox PH forest plot (stratified by tumor type). IFN-γ score and CDKN1A are independently protective; SERPINE1 is independently hazardous. CDKN2A expression is not significant after adjustment.</figcaption>
+          </figure>
+        </div>
       </div>
 
     </div>
