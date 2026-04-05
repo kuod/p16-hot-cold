@@ -4,6 +4,8 @@ Bioinformatics analysis exploring whether cellular senescence status (p16/CDKN2A
 
 **Central question:** Do p16-high tumors have more immune-inflamed microenvironments, and does that translate to better survival?
 
+**GitHub Pages:** [kuod.github.io/p16-hot-cold](https://kuod.github.io/p16-hot-cold/)
+
 ## Background
 
 - **Hot vs cold tumors** — immune-inflamed vs immune-excluded phenotypes, classified by a 6-gene IFN-γ signature (Ayers et al. 2017)
