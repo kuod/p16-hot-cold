@@ -165,12 +165,12 @@
     .mermaid-wrap {
       background: #fff;
       border-radius: 8px;
-      padding: 1.5rem;
+      padding: 1.5rem 1rem;
       box-shadow: 0 1px 5px rgba(0,0,0,0.08);
       overflow-x: auto;
-      text-align: center;
     }
-    .mermaid-wrap .mermaid { display: inline-block; text-align: left; }
+    .mermaid-wrap .mermaid { display: block; }
+    .mermaid-wrap .mermaid svg { width: 100%; height: auto; min-width: 700px; }
     .gene-legend {
       display: flex;
       flex-wrap: wrap;
@@ -259,7 +259,12 @@
   </style>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { curve: 'basis' } });
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      flowchart: { curve: 'basis', useMaxWidth: false },
+      themeVariables: { fontSize: '17px' }
+    });
   </script>
 </head>
 <body>
@@ -339,8 +344,8 @@
 
     <div class="mermaid-wrap">
       <pre class="mermaid">
-flowchart TB
-    stress(["⚡ Oncogenic stress · DNA damage\nReplicative exhaustion"])
+flowchart LR
+    stress(["⚡ Oncogenic stress\nDNA damage\nReplicative exhaustion"])
 
     subgraph p16path["p16 / RB1 axis"]
         direction TB
@@ -364,22 +369,22 @@ flowchart TB
     arrest{{"Cell cycle\narrest"}}
 
     subgraph saspbox["SASP — Senescence-Associated Secretory Phenotype"]
-        direction LR
+        direction TB
         s1["IL-6 · IL-1α · IL-1β · CXCL8"]:::sasp
         s2["CCL2 · CCL7 · CXCL1 · CXCL2 · CXCL3"]:::sasp
-        s3["MMP1 · MMP3 · MMP9 · MMP13 · VEGFA · IGFBP3 · IGFBP7"]:::sasp
+        s3["MMP1/3/9/13 · VEGFA · IGFBP3/7"]:::sasp
     end
 
-    cd8["CD8⁺ T cells · NK cells\nImmune infiltration"]
+    cd8["CD8⁺ T cells\nNK cells"]
 
-    subgraph ifngbox["IFN-γ Signature — hot / cold classifier"]
-        direction LR
+    subgraph ifngbox["IFN-γ Signature — hot/cold classifier"]
+        direction TB
         i1["IFNG · STAT1 · CCL5"]:::ifng
         i2["CXCL9 · CXCL10 · IDO1"]:::ifng
     end
 
     hot(["🔴 Hot tumor\nbetter survival"])
-    del(["CDKN2A deletion\n40 % of TCGA samples\nenriched in cold tumors"])
+    del(["CDKN2A deletion\n40% of TCGA samples\nenriched in cold tumors"])
     cold(["🔵 Cold tumor\nworse survival"])
 
     stress --> p16path & p53path
