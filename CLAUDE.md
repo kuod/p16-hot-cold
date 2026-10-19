@@ -51,7 +51,7 @@ figures/                 # Gitignored output plots
 ```
 
 **Key design decisions:**
-- Hot/cold classification uses **IFN-γ 6-gene signature** (median split); CD8+ T cell fraction from Thorsson et al. 2018 CIBERSORT is used as secondary validation
+- Hot/cold classification uses **IFN-γ 6-gene signature** (pan-cancer tertile split: cold / intermediate / hot); CD8+ T cell fraction from Thorsson et al. 2018 CIBERSORT is used as secondary validation
 - CDKN2A genomic status (deleted/mutated) is pulled from cBioPortal TCGA PanCancer Atlas 2018 study (`tcga_pan_can_atlas_2018`)
 - ssGSEA senescence scores use MSigDB sets: `FRIDMAN_SENESCENCE_UP`, `REACTOME_CELLULAR_SENESCENCE`, plus custom SASP and effector lists defined in `src/signatures.py`
 - **Python handles data acquisition and ssGSEA scoring (notebooks 01–03); R handles all statistical testing and survival analysis (notebooks 04–05).** Data passes between layers via parquet files read with `arrow`.
@@ -71,9 +71,9 @@ The following are the **confirmatory** hypotheses for this analysis. All other t
 | # | Hypothesis | Test | Notebook |
 |---|---|---|---|
 | H1 | Pan-cancer Spearman ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman, BH-FDR | 04 §2 |
-| H2 | SASP score is higher in hot vs cold tumors (pan-cancer) | Mann-Whitney U | 04 §5 |
-| H3 | CDKN2A deletion enriched in cold tumors (pan-cancer) | Chi-squared | 04 §4 |
-| H4 | p16-high hot tumors have better OS than p16-low cold tumors | Log-rank (4-group KM) | 05 §4 |
+| H2 | SASP score is higher in hot vs cold tumors (pan-cancer) | Kruskal-Wallis across tertiles (hot vs cold contrast) | 04 §5 |
+| H3 | CDKN2A deletion enriched in cold tumors (pan-cancer) | Chi-squared (pooled, confounded by tumor type) + Mantel-Haenszel stratified by tumor type | 04 §4 |
+| H4 | p16-high hot tumors have better OS than p16-low cold tumors | Log-rank (6-group KM: tertile × p16; also run stratified by tumor type) | 05 §4 |
 | H5 | CDKN2A_expr is an independent predictor of OS (age-adjusted, strata tumor type) | Cox PH (HR, 95% CI) | 05 §6 |
 
 **Multiple testing:** BH FDR is applied within each analysis. Across H1–H5, a Bonferroni threshold of α = 0.01 is used for the five primary tests. All other p-values reported are exploratory and should be interpreted accordingly.
@@ -91,7 +91,7 @@ TCGA bulk RNA-seq mixes tumor cells with stroma and infiltrating immune cells. P
 
 ## New Data Sources (added)
 
-- **TCGA ABSOLUTE purity** — UCSC Xena (Aran et al. 2015 consensus estimates)
+- **TCGA ABSOLUTE purity** — UCSC Xena (Aran et al. 2015 consensus estimates). NOTE: the current URL returns HTTP 403; purity is unavailable and Cox models run without it.
 - **Thorsson immune subtypes (C1–C6)** — UCSC Xena (`Subtype_Immune_Model_Based.txt.gz`)
 - **TMB (nonsynonymous mutations/Mb)** — cBioPortal per-study clinical attributes
 - **DSS / PFI survival endpoints** — already in `tcga_clinical_survival.tsv` (unused until notebook 05 update)

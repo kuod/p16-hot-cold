@@ -26,13 +26,16 @@ This analysis tests whether that mechanistic link is visible at scale across ~10
 The expected ρ of 0.10–0.25 (H1) is statistically robust at pan-cancer scale but not strong enough to use CDKN2A expression alone as an immune classifier. This is scientifically honest — bulk RNA-seq mixes tumor cells, stroma, and immune infiltrates, so the signal is inherently diluted.
 
 ### 2. SASP drives inflammation, but purity confounds it
-The stromal deconfounding analysis tests whether the SASP → hot association survives tumor purity adjustment. If the purity-adjusted Mann-Whitney remains significant, the SASP signal is genuinely tumor-intrinsic, not just a stroma artifact. This is a critical methodological checkpoint.
+The stromal deconfounding analysis tests whether the SASP → hot association survives tumor purity adjustment. (Note: tumor purity data is currently unavailable, so no purity adjustment has been run.) If a purity-adjusted comparison remained significant, the SASP signal is genuinely tumor-intrinsic, not just a stroma artifact. This is a critical methodological checkpoint.
 
-### 3. Deletion ≠ expression
+### 3. Pooled and stratified H3 disagree
+Pooled across tumor types, CDKN2A deletion is *more* frequent in hot (38.6%) than cold (31.7%) tumors (tumor-type confounding). A tumor-type-stratified Mantel-Haenszel test gives OR 1.30 (95% CI 1.12–1.50, p = 4e-4) in the direction of H3.
+
+### Deletion ≠ expression
 The 4-group analysis (deletion × expression-high/low) probes a biologically important paradox: some CDKN2A-deleted tumors still have high CDKN2A expression (presumably via the CDKN2B paralog or stromal contamination). A purity quartile analysis tests whether this is artifactual.
 
 ### 4. Survival benefit is likely driven by the combination
-The 4-group KM (H4) is the most clinically meaningful finding: hot/p16-high tumors should have best OS, cold/p16-low the worst. The intermediate groups (hot/p16-low, cold/p16-high) test whether immune phenotype or senescence status dominates — if hot/p16-low ≈ cold/p16-high in outcome, the effects are additive; if one dominates, it tells you which is more prognostic.
+The 6-group KM (H4; immune tertile × p16 high/low) does **not** show the pre-specified ordering (median OS: cold/p16-low 9.5 y, hot/p16-high 7.8 y); the unstratified log-rank p = 3.3e-3 becomes p = 0.08 when stratified by tumor type. The intermediate groups (hot/p16-low, cold/p16-high) test whether immune phenotype or senescence status dominates — if hot/p16-low ≈ cold/p16-high in outcome, the effects are additive; if one dominates, it tells you which is more prognostic.
 
 ### 5. The Cox HR direction matters more than the magnitude
 H5 asks whether CDKN2A_expr HR < 1.0 after adjusting for age, IFN-γ score, purity, and tumor type (via `strata(tumor_type)`). If yes, p16 expression is an independent favorable prognostic marker — not just a proxy for immune infiltration or patient age. VIF checks ensure IFN-γ/CDKN2A collinearity doesn't make those HRs uninterpretable.
@@ -65,4 +68,4 @@ H5 asks whether CDKN2A_expr HR < 1.0 after adjusting for age, IFN-γ score, puri
 
 ## One-Sentence Summary
 
-p16/CDKN2A expression marks a senescence state that promotes immune infiltration via SASP, and pan-cancer TCGA data shows that this correlates with hot tumor phenotype and better survival — but the effect size is modest and confounded by tumor purity, both of which are explicitly tested.
+In pan-cancer TCGA data, CDKN2A expression and SASP scores correlate modestly with an IFN-γ hot-tumor signature; the hypothesised survival benefit of p16-high/hot tumors is not supported once tumor type is accounted for, and purity confounding has not yet been assessed (purity data unavailable).
