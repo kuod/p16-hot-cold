@@ -10,7 +10,7 @@ from scipy import stats
 def normalize_barcode(barcode: str) -> str:
     """
     Normalize a TCGA barcode to the first 4 hyphen-separated components
-    (e.g. TCGA-AB-1234-01A-... → TCGA-AB-1234-01).
+    (e.g. TCGA-AB-1234-01A-11R-... → TCGA-AB-1234-01A; the vial letter is kept).
     Handles both full 7-component barcodes and already-shortened ones.
     """
     parts = str(barcode).split("-")
