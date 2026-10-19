@@ -156,11 +156,12 @@ alteration, and clinical data from 10,967 tumour samples across 33 TCGA
 cancer types. We show that CDKN2A expression positively correlates with
 IFN-$\gamma$ score pan-cancer (Spearman $\rho > 0$, BH-FDR\,$<$\,0.01),
 that SASP scores are enriched in hot tumours (Kruskal-Wallis $p<0.001$),
-and that CDKN2A genomic deletion is significantly enriched in cold
-tumours ($\chi^2$, $p<0.001$). Kaplan-Meier analysis of a four-group
-stratification (hot/cold\,$\times$\,p16-high/low) confirms that
-hot/p16-high patients have the best overall survival and cold/p16-low
-the worst (log-rank $p<0.001$). Cox proportional hazards modelling
+and that CDKN2A genomic deletion is enriched in cold tumours only after
+stratifying by tumour type (Mantel-Haenszel OR\,=\,1.30, $p=4\times10^{-4}$;
+the pooled $\chi^2$ test points the opposite way). A six-group
+stratification (immune tertile\,$\times$\,p16-high/low) did not show the
+pre-specified ordering, and its unstratified log-rank $p=3.3\times10^{-3}$
+became non-significant when stratified by tumour type ($p=0.08$). Cox proportional hazards modelling
 reveals IFN-$\gamma$ score as an independent survival predictor
 (HR\,=\,0.907, 95\,\%\,CI\,0.856--0.961, $p=8.5\times10^{-4}$), while a
 significant CDKN2A\,$\times$\,IFN-$\gamma$ interaction
@@ -281,13 +282,15 @@ pan-cancer (median log-fold change\,$>0.8$). \textbf{H2 is supported.}
 \subsection{CDKN2A genomic deletion is enriched in cold tumours (H3)}
 
 Using cBioPortal alteration calls from the TCGA PanCancer Atlas 2018,
-shallow and deep deletions of \textit{CDKN2A} were significantly more
-frequent in cold than hot tumours pan-cancer ($\chi^2$, $p<0.001$;
-Fig.~\ref{fig:alterations}). The enrichment was consistent across tumour
-types with $n\geq100$ samples, and \textit{CDKN2B} co-deletion showed a
+shallow and deep deletions of \textit{CDKN2A} were more frequent in hot
+(38.6\,\%) than cold (31.7\,\%) tumours in the pooled comparison ($\chi^2$,
+$p<0.001$; Fig.~\ref{fig:alterations}), which is confounded by tumour
+type. Stratifying by tumour type reversed the direction (Mantel-Haenszel
+OR\,=\,1.30, 95\,\%\,CI\,1.12--1.50, $p=4\times10^{-4}$; cold\,$>$\,hot in
+21 of 31 types). and \textit{CDKN2B} co-deletion showed a
 similar, smaller enrichment. In contrast, \textit{TP53} mutation was
 more prevalent in hot tumours, consistent with chromosomally unstable,
-immunogenic cancers. \textbf{H3 is supported.}
+immunogenic cancers. \textbf{H3 is supported only in the tumour-type-stratified analysis.}
 
 % ── Figure 2 ───────────────────────────────────────────────────────────────
 \begin{figure*}[t]
@@ -315,17 +318,16 @@ immunogenic cancers. \textbf{H3 is supported.}
   \label{fig:alterations}
 \end{figure*}
 
-\subsection{Senescence and immune phenotype jointly stratify overall
+\subsection{Senescence and immune phenotype versus overall
 survival (H4)}
 
-We classified samples into four groups (hot/p16-high, hot/p16-low,
-cold/p16-high, cold/p16-low) using within-type median splits for CDKN2A
+The analysis code classifies samples into six groups (IFN-$\gamma$
+tertile\,$\times$\,p16-high/low) using within-type median splits for CDKN2A
 expression, retaining tumour types with $\geq30$ samples and $\geq5$
 events per group (Fig.~\ref{fig:survival}a). The global log-rank test
-was highly significant ($p<0.001$). Hot/p16-high patients had the best
-overall survival; cold/p16-low patients had the worst outcome.
-Patterns were recapitulated in disease-specific survival (DSS) and
-progression-free interval (PFI). \textbf{H4 is supported.}
+without stratification gave $p=3.3\times10^{-3}$, but stratifying by tumour
+type gives $p=0.08$. The pre-specified ordering was not observed (median OS:
+cold/p16-low 9.5\,y, hot/p16-high 7.8\,y). \textbf{H4 is not supported.}
 
 \subsection{Immune and senescence markers as independent survival
 predictors (H5)}
@@ -448,8 +450,8 @@ with antigen-specific rather than SASP-driven immune activation.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{fig4_survival_composite.png}
-  \caption{\textbf{Senescence and immune phenotype jointly stratify
-  pan-cancer survival.}
+  \caption{\textbf{Senescence and immune phenotype and pan-cancer survival
+  (unstratified; see text).}
   Composite survival panel. \textbf{Left}: Kaplan-Meier overall survival
   curves for four patient groups: hot/p16-high (dark red), hot/p16-low
   (salmon), cold/p16-high (light blue), and cold/p16-low (dark blue).
@@ -515,12 +517,13 @@ with antigen-specific rather than SASP-driven immune activation.
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Discussion}
 
-Our analysis provides systematic pan-cancer evidence that p16/CDKN2A-
-mediated senescence shapes the immune microenvironment in ways that
-influence patient survival. Four of five pre-registered confirmatory
-hypotheses were supported (H1--H4), with the fifth (H5, CDKN2A as
-independent OS predictor) narrowly failing significance but revealing a
-more nuanced picture through interaction analysis.
+Our analysis provides pan-cancer observational associations between
+p16/CDKN2A expression, senescence scores and immune phenotype; it cannot
+establish that senescence shapes the microenvironment or patient survival. Of five pre-specified confirmatory
+hypotheses, H1 and H2 were supported, H3 only after stratification by
+tumour type, and H4 was not supported; H5 (CDKN2A as
+independent OS predictor) failed significance, with the interaction
+analysis giving a more nuanced (exploratory) picture.
 
 The positive correlation between CDKN2A expression and IFN-$\gamma$
 score (H1) is consistent with mechanistic studies showing that SASP

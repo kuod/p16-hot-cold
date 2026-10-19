@@ -10,7 +10,7 @@ from scipy import stats
 def normalize_barcode(barcode: str) -> str:
     """
     Normalize a TCGA barcode to the first 4 hyphen-separated components
-    (e.g. TCGA-AB-1234-01A-... → TCGA-AB-1234-01).
+    (e.g. TCGA-AB-1234-01A-11R-... → TCGA-AB-1234-01A; the vial letter is kept).
     Handles both full 7-component barcodes and already-shortened ones.
     """
     parts = str(barcode).split("-")
@@ -42,6 +42,8 @@ def signature_score(expr: pd.DataFrame, genes: list[str]) -> pd.Series:
     Per-sample signature score (Series indexed by sample barcode).
     """
     present = [g for g in genes if g in expr.index]
+    if not present:
+        raise ValueError(f"None of the {len(genes)} signature genes are present in the expression matrix")
     missing = set(genes) - set(present)
     if missing:
         print(f"  Warning: {len(missing)} genes not found: {missing}")
@@ -56,10 +58,12 @@ def classify_hot_cold(scores: pd.Series, n_groups: int = 2) -> pd.Series:
     """
     if n_groups == 2:
         threshold = scores.median()
-        return scores.map(lambda x: "hot" if x >= threshold else "cold")
+        return scores.map(lambda x: np.nan if pd.isna(x) else ("hot" if x >= threshold else "cold"))
     elif n_groups == 3:
         low, high = scores.quantile([1 / 3, 2 / 3])
         def _label(x):
+            if pd.isna(x):
+                return np.nan
             if x <= low:
                 return "cold"
             elif x >= high:
@@ -124,6 +128,9 @@ def spearman_table(x_df: pd.DataFrame, y_df: pd.DataFrame) -> pd.DataFrame:
         row = {}
         for yc in y_df.columns:
             mask = x_df[xc].notna() & y_df[yc].notna()
+            if mask.sum() < 3:
+                row[yc] = (np.nan, np.nan)
+                continue
             rho, pval = stats.spearmanr(x_df.loc[mask, xc], y_df.loc[mask, yc])
             row[yc] = (round(rho, 4), round(pval, 4))
         results.append(pd.Series(row, name=xc))

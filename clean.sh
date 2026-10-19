@@ -43,12 +43,10 @@ remove figures/
 echo ""
 echo "==> Generated reports"
 remove cold_tumor_p16_report.pdf
-remove paper/manuscript.pdf
+# NOTE: paper/manuscript.pdf and notebooks/*.html are tracked in git; not removed.
 remove paper/manuscript.aux
 remove paper/manuscript.log
 remove paper/manuscript.out
-remove notebooks/04_overlap_analysis.html
-remove notebooks/05_survival.html
 
 echo ""
 echo "==> Python / Jupyter caches"

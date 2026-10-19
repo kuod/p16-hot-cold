@@ -8,7 +8,7 @@ Bioinformatics analysis exploring whether cellular senescence status (p16/CDKN2A
 
 ## Background
 
-- **Hot vs cold tumors** — immune-inflamed vs immune-excluded phenotypes, classified by a 6-gene IFN-γ signature (Ayers et al. 2017)
+- **Hot vs cold tumors** — immune-inflamed vs immune-excluded phenotypes, classified by a 6-gene IFN-γ signature (adapted from Ayers et al. 2017: IFNG, STAT1, CCL5, CXCL9, CXCL10, IDO1; CCL5 replaces HLA-DRA); samples are split into pan-cancer IFN-γ **tertiles** (cold / intermediate / hot)
 - **p16/CDKN2A** — CDK4/6 inhibitor and marker of cellular senescence; senescent cells secrete pro-inflammatory SASP cytokines (IL-6, CXCL8, CCL2) that may recruit T cells
 - **Hypothesis:** p16 → SASP → T cell recruitment → hot tumor phenotype → better survival
 
@@ -18,6 +18,8 @@ Bioinformatics analysis exploring whether cellular senescence status (p16/CDKN2A
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+Run the unit tests with `pytest tests`.
 
 The dashboard runs with partial data — tabs show info banners for files not yet generated.
 
@@ -45,18 +47,18 @@ Rscript -e 'rmarkdown::render("notebooks/05_survival.Rmd")'
 | # | Hypothesis | Test |
 |---|---|---|
 | H1 | Pan-cancer ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman, BH-FDR |
-| H2 | SASP score higher in hot vs cold tumors | Mann-Whitney U |
-| H3 | CDKN2A deletion enriched in cold tumors | Chi-squared |
-| H4 | p16-high/hot tumors have better OS than p16-low/cold | Log-rank (4-group KM) |
+| H2 | SASP score higher in hot vs cold tumors | Kruskal-Wallis (3 tertiles); hot vs cold contrast |
+| H3 | CDKN2A deletion enriched in cold tumors | Chi-squared (pooled) + Mantel-Haenszel (stratified by tumor type) |
+| H4 | p16-high/hot tumors have better OS than p16-low/cold | Log-rank (6-group KM: tertile × p16; unstratified and stratified by tumor type) |
 | H5 | CDKN2A_expr is an independent predictor of OS | Cox PH (HR, 95% CI) |
 
 Bonferroni α = 0.01 across H1–H5. All other tests are exploratory (BH FDR α = 0.05).
 
 ## Data Sources
 
-All data is public and downloaded at runtime — no manual steps required:
+All data is public and downloaded at runtime. Known gap: the tumor-purity URL currently returns HTTP 403, so purity is unavailable and the Cox model is not purity-adjusted:
 
-- **UCSC Xena** — TCGA pan-cancer RNA-seq (log2 TPM)
+- **UCSC Xena** — TCGA pan-cancer RNA-seq (RSEM log2(norm_count+1), EB++ AdjustPANCAN)
 - **cBioPortal** — CDKN2A/TP53/RB1/ATM/PTEN CNA + mutation status (TCGA PanCancer Atlas 2018)
 - **Thorsson et al. 2018** — CIBERSORT immune fractions and immune subtype (C1–C6)
 - **Aran et al. 2015** — TCGA ABSOLUTE tumor purity estimates

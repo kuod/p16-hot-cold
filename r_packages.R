@@ -22,7 +22,7 @@ pkgs <- c(
   # Statistical testing
   "broom",      # tidy() Cox model output
   "rstatix",    # cor_test() with BH FDR correction
-  "car"         # vif() multicollinearity check for Cox models
+  "car",        # vif() multicollinearity check for Cox models
   # Reproducibility
   "renv"        # lock-file based reproducibility (run renv::snapshot() after install)
 )

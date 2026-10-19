@@ -121,6 +121,7 @@ if (file.exists(purity_file)) {
     master$tumor_purity <- NA_real_
   }
 } else {
+  warning("tcga_purity.tsv not found: Cox models below are NOT purity-adjusted")
   cat("tcga_purity.tsv not found — run notebook 01 first\n")
   master$tumor_purity <- NA_real_
 }
@@ -268,6 +269,14 @@ lr6   <- survdiff(surv6 ~ group6, data = sub6)
 lr6_p <- 1 - pchisq(lr6$chisq, df = length(lr6$obs) - 1)
 cat(sprintf("Log-rank p (6-group): %.2e\n", lr6_p))
 
+# Stratified log-rank: the unstratified test above is confounded by tumor type
+# (baseline survival differs enormously between cancers), so report both.
+lr6s   <- survdiff(surv6 ~ group6 + strata(tumor_type), data = sub6)
+# obs is a strata x groups matrix here, so df = (#groups with data) - 1
+lr6s_p <- 1 - pchisq(lr6s$chisq, df = sum(lr6s$n > 0) - 1)
+cat(sprintf("Log-rank p (6-group, stratified by tumor type): %.2e\n", lr6s_p))
+print(summary(fit6)$table[, c("records", "events", "median")])  # median OS (years), KM estimate
+
 group_palette <- c(
   "hot / p16-high"          = "#c0392b",
   "hot / p16-low"           = "#e08080",
@@ -414,7 +423,8 @@ p3 <- ggplot(cox_tidy, aes(x = estimate, xmin = conf.low, xmax = conf.high, y = 
   labs(
     x     = "Hazard Ratio (95% CI)",
     y     = NULL,
-    title = "Cox HR (adjusted for tumor type via strata)"
+    title = sprintf("Cox HR (strata: tumor type; covariates: %s)",
+                    paste(c("age", "IFN-\u03b3", "CDKN2A", optional_covars), collapse = ", "))
   ) +
   theme_bw()
 
