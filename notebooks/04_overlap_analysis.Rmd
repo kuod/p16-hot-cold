@@ -249,6 +249,27 @@ if ("cdkn2a_deleted" %in% colnames(master) && "hot_cold" %in% colnames(master)) 
   cat(sprintf("Chi-squared test (confirmatory set): chi2=%.2f, p=%.2e, df=%d\n",
               chi_res_conf$statistic, chi_res_conf$p.value, chi_res_conf$parameter))
 
+  # Tumor-type-stratified test (Mantel-Haenszel, cold vs hot). The pooled
+  # chi-squared above is confounded by tumor type (both CDKN2A deletion rate and
+  # the pan-cancer IFN-g tertile vary strongly by type; Simpson's paradox), so
+  # the stratified result is the appropriate test of H3.
+  cmh_data <- chi_data |>
+    filter(hot_cold %in% c("cold", "hot")) |>
+    group_by(tumor_type) |>
+    filter(n_distinct(hot_cold) == 2, n_distinct(cdkn2a_deleted) == 2) |>
+    ungroup()
+  cmh_tbl <- table(
+    deleted = factor(cmh_data$cdkn2a_deleted, levels = c(TRUE, FALSE)),
+    immune  = factor(cmh_data$hot_cold, levels = c("cold", "hot")),
+    type    = cmh_data$tumor_type
+  )
+  cmh <- mantelhaen.test(cmh_tbl, exact = FALSE)
+  cat(sprintf(paste0("Mantel-Haenszel (strata = tumor type, %d types, cold vs hot): ",
+                     "common OR (cold vs hot odds of deletion)=%.2f, 95%% CI %.2f-%.2f, p=%.2e\n"),
+              dim(cmh_tbl)[3], cmh$estimate, cmh$conf.int[1], cmh$conf.int[2], cmh$p.value))
+  cat("NOTE: compare with the pooled test above; if the directions differ the pooled",
+      "result is confounded by tumor type and H3 should be judged on the stratified test.\n")
+
   # Immune phenotype fraction by deletion status
   hot_frac <- master |>
     group_by(cdkn2a_deleted) |>
