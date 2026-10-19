@@ -121,6 +121,7 @@ if (file.exists(purity_file)) {
     master$tumor_purity <- NA_real_
   }
 } else {
+  warning("tcga_purity.tsv not found: Cox models below are NOT purity-adjusted")
   cat("tcga_purity.tsv not found — run notebook 01 first\n")
   master$tumor_purity <- NA_real_
 }
@@ -414,7 +415,8 @@ p3 <- ggplot(cox_tidy, aes(x = estimate, xmin = conf.low, xmax = conf.high, y = 
   labs(
     x     = "Hazard Ratio (95% CI)",
     y     = NULL,
-    title = "Cox HR (adjusted for tumor type via strata)"
+    title = sprintf("Cox HR (strata: tumor type; covariates: %s)",
+                    paste(c("age", "IFN-\u03b3", "CDKN2A", optional_covars), collapse = ", "))
   ) +
   theme_bw()
 
