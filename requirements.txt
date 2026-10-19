@@ -4,7 +4,6 @@ numpy~=1.24
 
 # Bioinformatics
 gseapy~=1.1          # ssGSEA, GSEA, MSigDB access
-pydeseq2~=0.4        # differential expression (optional)
 
 # Machine learning
 scikit-learn~=1.3    # k-means, UMAP preprocessing
@@ -17,7 +16,11 @@ umap-learn~=0.5      # UMAP dimensionality reduction
 # Data access
 requests~=2.31
 tqdm~=4.66
-arrow~=14.0          # read/write parquet files (bridges Python ↔ R)
+pyarrow>=14      # read/write parquet files (bridges Python ↔ R)
+scipy>=1.10
+
+# Testing
+pytest>=7
 
 # Notebooks
 jupyter~=1.0
