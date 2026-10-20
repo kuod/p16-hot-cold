@@ -56,12 +56,12 @@ Bonferroni α = 0.01 across H1–H5. All other tests are exploratory (BH FDR α 
 
 ## Data Sources
 
-All data is public and downloaded at runtime. Known gap: the tumor-purity URL currently returns HTTP 403, so purity is unavailable and the Cox model is not purity-adjusted:
+All data is public and downloaded at runtime. Tumor purity (ABSOLUTE) comes from the NCI GDC and is included as a covariate in the Cox models (notebook 05; the SASP and IFN-γ purity sensitivity analyses are in notebook 04):
 
 - **UCSC Xena** — TCGA pan-cancer RNA-seq (RSEM log2(norm_count+1), EB++ AdjustPANCAN)
 - **cBioPortal** — CDKN2A/TP53/RB1/ATM/PTEN CNA + mutation status (TCGA PanCancer Atlas 2018)
 - **Thorsson et al. 2018** — CIBERSORT immune fractions and immune subtype (C1–C6)
-- **Aran et al. 2015** — TCGA ABSOLUTE tumor purity estimates (download currently fails with HTTP 403; not used)
+- **Taylor et al. 2018** — TCGA PanCanAtlas ABSOLUTE tumor purity/ploidy calls (NCI GDC); about 95.8% of the 9,702 retained samples have a purity value
 
 ## Architecture
 
