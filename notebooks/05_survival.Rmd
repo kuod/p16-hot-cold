@@ -112,18 +112,20 @@ if (file.exists(purity_file)) {
     pur_tbl$sample_id  <- gsub("\\.", "-", pur_tbl$sample_id)
     pur_tbl$sample_id  <- sub("^(TCGA-[^-]+-[^-]+-[0-9]{2}).*", "\\1", pur_tbl$sample_id)
     pur_tbl$tumor_purity <- suppressWarnings(as.numeric(pur_tbl$tumor_purity))
-    master <- left_join(master, pur_tbl, by = "sample_id")
+    # notebook 02 may already have written tumor_purity into the immune labels;
+    # drop it first so the join does not create tumor_purity.x/.y
+    master <- master |> select(-any_of("tumor_purity")) |> left_join(pur_tbl, by = "sample_id")
     cat(sprintf("Purity joined: %d / %d samples (median=%.2f)\n",
                 sum(!is.na(master$tumor_purity)), nrow(master),
                 median(master$tumor_purity, na.rm = TRUE)))
   } else {
     cat("Could not identify purity/sample columns\n")
-    master$tumor_purity <- NA_real_
+    if (!"tumor_purity" %in% names(master)) master$tumor_purity <- NA_real_
   }
 } else {
   warning("tcga_purity.tsv not found: Cox models below are NOT purity-adjusted")
   cat("tcga_purity.tsv not found — run notebook 01 first\n")
-  master$tumor_purity <- NA_real_
+  if (!"tumor_purity" %in% names(master)) master$tumor_purity <- NA_real_
 }
 
 # ── TMB ───────────────────────────────────────────────────────────────────────
