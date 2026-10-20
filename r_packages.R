@@ -4,6 +4,9 @@
 #   Rscript r_packages.R
 
 pkgs <- c(
+  # Rendering (needed by every rmarkdown::render() call on the .Rmd notebooks)
+  "rmarkdown",  # rmarkdown::render()
+  "knitr",      # chunk engine used by rmarkdown
   # Data I/O
   "arrow",      # read parquet files from Python notebooks
   "jsonlite",   # fromJSON() for tcga_tmb.json (notebook 05)
@@ -17,7 +20,7 @@ pkgs <- c(
   "pheatmap",   # Spearman correlation heatmap
   # Survival analysis
   "survival",   # Surv(), survfit(), survdiff(), coxph(), cox.zph()
-  "survminer",  # ggsurvplot(), ggforest()
+  "survminer",  # ggsurvplot() (ggforest() is not used: it does not support strata())
   "cmprsk",     # Fine-Gray competing risks regression (crr())
   # Statistical testing
   "broom",      # tidy() Cox model output

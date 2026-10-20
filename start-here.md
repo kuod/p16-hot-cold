@@ -26,7 +26,7 @@ jupyter lab
 
 Everything downloads automatically — UCSC Xena RNA-seq, clinical survival table,
 Thorsson et al. 2018 CIBERSORT immune fractions (NCI GDC), and cBioPortal CNA/mutation
-data. No manual steps required. Expect ~30 minutes on a typical connection.
+data. No manual steps are needed for the downloads that work. Known gap: the tumor-purity file (Aran et al. 2015) currently returns HTTP 403, so `data/tcga_purity.tsv` is not produced; the pipeline still runs, but no analysis is purity-adjusted (supply the file manually to fix). Expect ~30 minutes on a typical connection.
 
 ---
 
@@ -69,7 +69,8 @@ Rscript -e 'rmarkdown::render("notebooks/05_survival.Rmd")'
 ```
 
 Notebook 04 produces figures in `figures/`. Notebook 05 produces figures plus
-`data/cox_results.csv` and `data/logrank_per_type.csv`.
+`data/cox_results.csv`, `data/logrank_per_type.csv`, `data/cox_interaction_results.csv`
+and `data/competing_risks_results.csv`.
 
 ---
 
@@ -85,7 +86,7 @@ Run notebook 06 in Jupyter. Produces composite figures including UMAP (~10 min).
 streamlit run app.py
 ```
 
-Opens at `http://localhost:8501`. All 6 tabs are populated once Steps 2–6 are
+Opens at `http://localhost:8501`. All 9 tabs are populated once Steps 2–6 are
 complete. The app runs fine with partial data — tabs show info banners for any
 files not yet generated.
 
@@ -95,12 +96,12 @@ files not yet generated.
 
 | Hypothesis | Test | Notebook |
 |---|---|---|
-| SASP-high → hot (SASP drives TIL infiltration) | Mann-Whitney U, Spearman ρ | 04 |
+| SASP-high → hot (SASP drives TIL infiltration) | 3-group Kruskal-Wallis (SASP score), Spearman ρ | 04 |
 | CDKN2A deletion → cold (loss of SASP signaling) | Chi-squared contingency | 04 |
 | Relationship is cancer-type specific | Per-type Spearman, BH FDR | 04 |
 | Hot tumors → better survival | KM + log-rank | 05 |
-| p16-high/hot combination → best prognosis | 4-group KM + log-rank | 05 |
-| IFN-γ and CDKN2A independently predict survival | Cox PH with strata | 05 |
+| p16-high/hot combination → best prognosis (hypothesis; ordering not observed) | 6-group KM + log-rank (unstratified and stratified by tumor type) | 05 |
+| IFN-γ and CDKN2A independently predict survival (observed: IFN-γ yes, CDKN2A no) | Cox PH with strata | 05 |
 
 ---
 
@@ -122,10 +123,12 @@ The largest item is the raw TCGA expression matrix (~316 MB, ~30 min to redownlo
 
 Before trusting results, confirm:
 
-- [ ] `nrow` of both parquet files matches (inner join should retain ~10–11k samples)
+- [ ] `nrow` of both parquet files matches (inner join should retain ~9.9k samples)
 - [ ] Pan-cancer Spearman ρ (CDKN2A vs IFN-γ) from R notebook 04 matches the Python
       scatter in the dashboard within ±0.01
-- [ ] Hot tumors show better prognosis in known immunotherapy-responsive types
-      (SKCM, BLCA) — sanity-checks biology
+- [ ] Hot tumors are *expected* to show better prognosis in known immunotherapy-responsive types
+      (SKCM, BLCA), but this is not observed in the current results (per-type log-rank
+      p ≈ 0.13 for SKCM and 0.095 for BLCA, not significant); treat it as a biology
+      sanity check, not a pass/fail criterion
 - [ ] `cox.zph()` output in notebook 05 shows non-significant p-values (PH assumption holds)
 - [ ] No tumor type contributes >20% of total samples (check Overview tab in dashboard)

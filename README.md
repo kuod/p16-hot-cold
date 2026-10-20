@@ -46,8 +46,8 @@ Rscript -e 'rmarkdown::render("notebooks/05_survival.Rmd")'
 
 | # | Hypothesis | Test |
 |---|---|---|
-| H1 | Pan-cancer ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman, BH-FDR |
-| H2 | SASP score higher in hot vs cold tumors | Kruskal-Wallis (3 tertiles); hot vs cold contrast |
+| H1 | Pan-cancer ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman (single pan-cancer `cor.test`; BH-FDR only on exploratory tables) |
+| H2 | SASP score higher in hot vs cold tumors | Three-group Kruskal-Wallis (tertiles) on SASP score, plus group medians |
 | H3 | CDKN2A deletion enriched in cold tumors | Chi-squared (pooled) + Mantel-Haenszel (stratified by tumor type) |
 | H4 | p16-high/hot tumors have better OS than p16-low/cold | Log-rank (6-group KM: tertile × p16; unstratified and stratified by tumor type) |
 | H5 | CDKN2A_expr is an independent predictor of OS | Cox PH (HR, 95% CI) |
@@ -61,7 +61,7 @@ All data is public and downloaded at runtime. Known gap: the tumor-purity URL cu
 - **UCSC Xena** — TCGA pan-cancer RNA-seq (RSEM log2(norm_count+1), EB++ AdjustPANCAN)
 - **cBioPortal** — CDKN2A/TP53/RB1/ATM/PTEN CNA + mutation status (TCGA PanCancer Atlas 2018)
 - **Thorsson et al. 2018** — CIBERSORT immune fractions and immune subtype (C1–C6)
-- **Aran et al. 2015** — TCGA ABSOLUTE tumor purity estimates
+- **Aran et al. 2015** — TCGA ABSOLUTE tumor purity estimates (download currently fails with HTTP 403; not used)
 
 ## Architecture
 

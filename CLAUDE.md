@@ -32,7 +32,7 @@ Run notebooks sequentially — each produces parquet files consumed by the next:
 | `02_immune_classification.ipynb` | Python | `data/sample_immune_labels.parquet` | ~5 min |
 | `03_p16_senescence.ipynb` | Python | `data/sample_senescence.parquet` | ~20–30 min (ssGSEA) |
 | `04_overlap_analysis.Rmd` | R | Figures in `figures/` | ~5 min |
-| `05_survival.Rmd` | R | Survival figures + `data/cox_results.csv` | ~5 min |
+| `05_survival.Rmd` | R | Survival figures + `data/cox_results.csv`, `data/logrank_per_type.csv`, `data/cox_interaction_results.csv`, `data/competing_risks_results.csv` | ~5 min |
 | `06_figures.ipynb` | Python | Composite figures | ~10 min (UMAP) |
 
 Knit the `.Rmd` notebooks with `rmarkdown::render("notebooks/04_overlap_analysis.Rmd")` or via RStudio.
@@ -70,13 +70,13 @@ The following are the **confirmatory** hypotheses for this analysis. All other t
 
 | # | Hypothesis | Test | Notebook |
 |---|---|---|---|
-| H1 | Pan-cancer Spearman ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman, BH-FDR | 04 §2 |
-| H2 | SASP score is higher in hot vs cold tumors (pan-cancer) | Kruskal-Wallis across tertiles (hot vs cold contrast) | 04 §5 |
+| H1 | Pan-cancer Spearman ρ(CDKN2A_expr, IFN-γ score) > 0 | Spearman (single pan-cancer `cor.test`, judged against Bonferroni α = 0.01) | 04 §2 |
+| H2 | SASP score is higher in hot vs cold tumors (pan-cancer) | Three-group Kruskal-Wallis across tertiles on the SASP score, plus per-group medians (no separate hot-vs-cold test; notebook 04's section heading still says Mann-Whitney) | 04 §5 |
 | H3 | CDKN2A deletion enriched in cold tumors (pan-cancer) | Chi-squared (pooled, confounded by tumor type) + Mantel-Haenszel stratified by tumor type | 04 §4 |
 | H4 | p16-high hot tumors have better OS than p16-low cold tumors | Log-rank (6-group KM: tertile × p16; also run stratified by tumor type) | 05 §4 |
 | H5 | CDKN2A_expr is an independent predictor of OS (age-adjusted, strata tumor type) | Cox PH (HR, 95% CI) | 05 §6 |
 
-**Multiple testing:** BH FDR is applied within each analysis. Across H1–H5, a Bonferroni threshold of α = 0.01 is used for the five primary tests. All other p-values reported are exploratory and should be interpreted accordingly.
+**Multiple testing:** Across H1–H5, a Bonferroni threshold of α = 0.01 is used for the five primary tests. BH FDR is applied only to the exploratory tables (per-type correlations, correlation tables, per-type log-rank). All other p-values reported are exploratory and should be interpreted accordingly.
 
 **Expected effect sizes (for sanity-checking results):**
 - H1: ρ ~ 0.10–0.25 (weak-moderate positive; p16 promotes SASP → immune infiltration)
@@ -87,11 +87,11 @@ The following are the **confirmatory** hypotheses for this analysis. All other t
 
 ## Tumor Purity Notes
 
-TCGA bulk RNA-seq mixes tumor cells with stroma and infiltrating immune cells. Purity estimates (TCGA ABSOLUTE, from Aran et al. 2015) are downloaded in notebook 01 and used as a covariate in Cox models (notebook 05). Spearman correlations involving immune scores should be interpreted with awareness that high-stroma samples inflate immune signals.
+TCGA bulk RNA-seq mixes tumor cells with stroma and infiltrating immune cells. Purity estimates (TCGA ABSOLUTE, from Aran et al. 2015) are meant to be downloaded in notebook 01 and used as a covariate in Cox models (notebook 05), but the download currently fails (HTTP 403), so purity is unavailable and no model or deconfounding analysis is purity-adjusted. Spearman correlations involving immune scores should be interpreted with awareness that high-stroma samples inflate immune signals.
 
 ## New Data Sources (added)
 
 - **TCGA ABSOLUTE purity** — UCSC Xena (Aran et al. 2015 consensus estimates). NOTE: the current URL returns HTTP 403; purity is unavailable and Cox models run without it.
 - **Thorsson immune subtypes (C1–C6)** — UCSC Xena (`Subtype_Immune_Model_Based.txt.gz`)
 - **TMB (nonsynonymous mutations/Mb)** — cBioPortal per-study clinical attributes
-- **DSS / PFI survival endpoints** — already in `tcga_clinical_survival.tsv` (unused until notebook 05 update)
+- **DSS / PFI survival endpoints** — already in `tcga_clinical_survival.tsv` (used in notebook 05 §8 for the DSS/PFI log-rank tests and §10 for per-type DSS log-rank)
