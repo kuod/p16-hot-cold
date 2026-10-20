@@ -103,7 +103,7 @@ if page == "Overview":
 
         | Hypothesis | Test |
         |---|---|
-        | SASP-high tumors → hot (pro-inflammatory cytokines drive TIL infiltration) | Spearman correlation, Mann-Whitney |
+        | SASP-high tumors → hot (pro-inflammatory cytokines drive TIL infiltration) | Spearman correlation, Kruskal-Wallis (3 groups) |
         | CDKN2A-deleted tumors → cold | Chi-squared |
         | Senescence/immune phenotype predicts survival | Kaplan-Meier, Cox PH |
         """
@@ -533,7 +533,7 @@ each cancer, not simply because certain indolent cancer types happen to be more 
 
 **5. Important caveats**
 - TCGA bulk RNA-seq mixes tumor and immune cells; high purity (fewer infiltrating cells) artificially
-  lowers IFN-γ score. The effect is attenuated but survives purity adjustment in sensitivity analyses.
+  lowers IFN-γ score. Tumor-purity data are unavailable (download blocked), so no purity-adjusted analysis has been run and this confounder is not addressed here.
 - Immune-inflamed tumors can undergo T cell exhaustion (PD-1/LAG-3/TIM-3 upregulation), partially
   blunting the survival advantage. The pan-cancer HR represents the **net** effect.
 - IDO1 (in the signature) is immunosuppressive when highly induced; this creates a ceiling effect
@@ -1389,7 +1389,7 @@ elif page == "Hypotheses":
             "id": "H2",
             "title": "SASP score is higher in hot vs cold tumors (pan-cancer)",
             "rationale": "Hot tumors — defined by high IFN-γ activity — should co-occur with elevated SASP secretion, as SASP cytokines (IL-6, CXCL8) recruit and activate immune cells.",
-            "test": "Mann-Whitney U (hot vs cold SASP NES)",
+            "test": "Kruskal-Wallis across hot / intermediate / cold (SASP NES); medians shown for hot vs cold",
             "expected": "SASP NES higher in hot, p < 0.01",
             "notebook": "04 §5",
             "threshold": "Bonferroni α = 0.01",
@@ -1405,7 +1405,7 @@ elif page == "Hypotheses":
             "id": "H3",
             "title": "CDKN2A deletion is enriched in cold tumors (pan-cancer)",
             "rationale": "Loss of CDKN2A removes senescence braking — reducing SASP — so CDKN2A-deleted tumors should be more immune-excluded (cold).",
-            "test": "Chi-squared (CDKN2A deletion rate in hot vs cold)",
+            "test": "Chi-squared (pooled CDKN2A alteration rate, confounded by tumor type); the tumor-type-stratified Mantel-Haenszel test is in notebook 04 §4",
             "expected": "CDKN2A deletion rate higher in cold tumors, p < 0.01",
             "notebook": "04 §4",
             "threshold": "Bonferroni α = 0.01",
@@ -1420,12 +1420,12 @@ elif page == "Hypotheses":
             "id": "H4",
             "title": "p16-high hot tumors have better OS than p16-low cold tumors",
             "rationale": "If p16/SASP drives immune infiltration, the combination of hot (immune-active) + p16-high should confer the best prognosis; cold + p16-low the worst.",
-            "test": "Log-rank (4-group KM: hot/cold × p16-high/low)",
+            "test": "Log-rank (6-group KM: immune tertile × p16-high/low; unstratified and stratified by tumor type in notebook 05 §4)",
             "expected": "Global log-rank p < 0.01; hot/p16-high best, cold/p16-low worst",
             "notebook": "05 §4",
             "threshold": "Bonferroni α = 0.01",
             "observed": (
-                f"{(lr_sig_frac * 100):.0f}% of tumor types show significant hot>cold OS difference (padj < 0.05)"
+                f"{(lr_sig_frac * 100):.0f}% of tumor types show a significant OS difference across immune groups (per-type 3-group log-rank, padj < 0.05)"
                 if lr_sig_frac is not None else "_Survival data not yet available — re-run notebook 05_"
             ),
             "direction_ok": lr_sig_frac is not None and lr_sig_frac > 0.3,
