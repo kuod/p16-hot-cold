@@ -446,12 +446,13 @@
         cold tumors only after stratifying by tumor type (the pooled comparison points the other way).
         The pre-specified claim that p16-high/hot tumors have the best survival and p16-low/cold the worst
         is <em>not</em> supported: the unstratified 6-group log-rank (p = 3.3&times;10<sup>&minus;3</sup>) is lost
-        after stratifying by tumor type (p = 0.08).
+        after stratifying by tumor type (p = 0.077).
       </p>
       <p>
         However, CDKN2A expression is <em>not</em> an independent predictor of survival after
-        adjusting for the IFN-&#947; score — the immune signature subsumes the senescence signal —
-        i.e. there is no evidence of an independent association (observational data cannot establish whether p16 acts upstream of immune recruitment).
+        adjusting for the IFN-&#947; score (HR 0.989, p = 0.16), i.e. there is no evidence of an independent association.
+        An exploratory CDKN2A &times; IFN-&#947; interaction is significant (p = 1.7&times;10<sup>&minus;5</sup>), so this is not a simple case of the
+        immune signature subsuming the senescence signal. Observational data cannot establish whether p16 acts upstream of immune recruitment.
       </p>
     </div>
   </section>
@@ -468,8 +469,8 @@
       <strong>SASP</strong> — secreting cytokines, chemokines, and proteases that recruit CD8⁺
       T cells and NK cells. This immune infiltration is measured by the
       <strong>IFN-γ 6-gene signature</strong>, which defines "hot" tumors in this analysis.
-      When CDKN2A is deleted, the p16 brake is lost, SASP is impaired, immune recruitment fails,
-      and tumors remain "cold."
+      The working hypothesis is that when CDKN2A is deleted, the p16 brake is lost, SASP is impaired, immune recruitment fails,
+      and tumors remain "cold." This is a hypothesis, not an established mechanism, and in these data it is supported only after stratifying by tumor type.
     </p>
 
     <div class="pathway-wrap">
@@ -565,7 +566,7 @@
           <div>
             <h4>Outcome</h4>
             🔴 <strong>Hot tumor</strong><br>
-            <span style="font-size:.8rem;color:#991b1b;">better survival</span>
+            <span style="font-size:.8rem;color:#991b1b;">hypothesised: better survival</span>
           </div>
         </div>
 
@@ -580,7 +581,7 @@
         <div class="pw-stage cold" style="text-align:center;min-width:130px;">
           <h4>Outcome</h4>
           🔵 <strong>Cold tumor</strong><br>
-          <span style="font-size:.8rem;color:#1e40af;">worse survival</span>
+          <span style="font-size:.8rem;color:#1e40af;">hypothesised: worse survival (not supported by H4)</span>
         </div>
       </div>
 
@@ -654,7 +655,7 @@
       <div class="finding-card confirmed">
         <div class="label">H2 &mdash; Confirmed</div>
         <h3>SASP score is higher in hot tumors</h3>
-        <div class="result">Hot median NES &minus;0.07 vs cold &minus;0.16; Kruskal-Wallis p &lt; 0.001 (hot &gt; cold within 25 of 26 tumor types)</div>
+        <div class="result">Hot median NES &minus;0.07 vs cold &minus;0.16; Kruskal-Wallis p &lt; 0.001 (three-group, pooled across tumor types)</div>
         <p class="interp">
           The senescence-associated secretory phenotype signature is definitively enriched in
           immune-inflamed tumors. Caveat: the SASP score is computed on a restricted gene universe and is
@@ -689,20 +690,19 @@
         </div>
       </div>
 
-      <div class="finding-card confirmed">
+      <div class="finding-card partial">
         <div class="label">H4 &mdash; Not supported</div>
         <h3>Hot/p16-high tumors show the best overall survival</h3>
-        <div class="result">4-group log-rank p &lt; 0.001; hot+p16-high best, cold+p16-low worst</div>
+        <div class="result">6-group log-rank: unstratified p = 3.3&times;10<sup>&minus;3</sup>, stratified by tumor type p = 0.077; the pre-specified ordering (hot+p16-high best, cold+p16-low worst) is not observed</div>
         <p class="interp">
-          The combined senescence + immune phenotype is more prognostic than either feature alone.
-          The pre-specified ordering is not observed (median OS: cold/p16-low 9.5 y, hot/p16-high 7.8 y), and the global log-rank p = 3.3&times;10<sup>&minus;3</sup> is unstratified; stratified by tumor type p = 0.08. Per-type effects are strongest in LGG (p &lt; 10<sup>&minus;15</sup>), KIRP, PAAD, and LUAD.
+          The pre-specified ordering is not observed (median OS: cold/p16-low 9.5 y, hot/p16-high 7.8 y), and the global log-rank p = 3.3&times;10<sup>&minus;3</sup> is unstratified; stratified by tumor type p = 0.077. In per-tumor-type three-group log-rank tests (non-directional), three types pass FDR &lt; 0.05: LGG (p &lt; 10<sup>&minus;15</sup>; only 4 hot tumors), KIRP and PAAD; LUAD (padj 0.0501) and UVM (padj 0.060) narrowly miss.
         </p>
         <div class="figs">
           <figure>
             <a href="figures/km_4group.png">
               <img src="figures/km_4group.png" alt="Kaplan-Meier overall survival: immune tertile × p16 high/low" />
             </a>
-            <figcaption>Kaplan-Meier OS curves stratified by immune phenotype (cold/intermediate/hot) and p16 status (high/low within tumor type). Six groups (3 immune tertiles × 2 p16 groups); unstratified log-rank p = 3.3×10⁻³, stratified by tumor type p = 0.08.</figcaption>
+            <figcaption>Kaplan-Meier OS curves stratified by immune phenotype (cold/intermediate/hot) and p16 status (high/low within tumor type). Six groups (3 immune tertiles × 2 p16 groups); unstratified log-rank p = 3.3×10⁻³, stratified by tumor type p = 0.077.</figcaption>
           </figure>
         </div>
       </div>
@@ -711,7 +711,7 @@
         <div class="label">H5 &mdash; Partial / Informative null</div>
         <h3>IFN-&#947; is the independent OS predictor; CDKN2A is not</h3>
         <div class="result">
-          CDKN2A: HR 0.989 (95% CI 0.973&ndash;1.004), p = 0.16 (ns)<br>
+          CDKN2A: HR 0.989 (95% CI 0.973&ndash;1.005), p = 0.16 (ns)<br>
           IFN-&#947; score: HR 0.907 (95% CI 0.856&ndash;0.961), p &lt; 0.001
         </div>
         <p class="interp">
@@ -802,7 +802,7 @@
         <tbody>
           <tr><td>1</td><td><code>01_data_download</code></td><td>Python</td><td>Raw data in <code>data/</code></td><td>~30 min</td></tr>
           <tr><td>2</td><td><code>02_immune_classification</code></td><td>Python</td><td>Hot/cold labels (IFN-&#947; tertile split)</td><td>~5 min</td></tr>
-          <tr><td>3</td><td><code>03_p16_senescence</code></td><td>Python</td><td>45 senescence/immune scores (ssGSEA)</td><td>~25 min</td></tr>
+          <tr><td>3</td><td><code>03_p16_senescence</code></td><td>Python</td><td>12 ssGSEA gene-set scores plus expression markers and alteration flags (45 columns)</td><td>~25 min</td></tr>
           <tr><td>4</td><td><code>04_overlap_analysis</code></td><td>R Markdown</td><td>Spearman correlations, chi-squared tests</td><td>~5 min</td></tr>
           <tr><td>5</td><td><code>05_survival</code></td><td>R Markdown</td><td>KM curves, Cox models</td><td>~5 min</td></tr>
           <tr><td>6</td><td><code>06_figures</code></td><td>Python</td><td>Composite figures, UMAP</td><td>~10 min</td></tr>
@@ -861,8 +861,8 @@
       </li>
       <li>
         <strong>Tumor purity confounding.</strong>
-        High-stroma samples inflate immune scores. Purity is included as a covariate in Cox models,
-        but ~28% of samples lack purity data. Spearman correlations involving immune scores should
+        High-stroma samples inflate immune scores. Tumor-purity data are unavailable (download blocked, HTTP 403), so no analysis
+        is purity-adjusted. Spearman correlations involving immune scores should
         be interpreted with this caveat in mind.
       </li>
       <li>
@@ -930,8 +930,7 @@
         <div class="icon">⚙️</div>
         <h3>Mechanistic &amp; Statistical Extensions</h3>
         <ul>
-          <li>CDKN2A &times; IFN-&#947; interaction term in Cox model (preliminary data in notebook 05)</li>
-          <li>Competing-risks analysis (Fine-Gray) for cancer-specific vs non-cancer mortality</li>
+          <li>Already done (notebook 05, exploratory): CDKN2A &times; IFN-&#947; interaction term in Cox model (HR 0.964, p = 1.7&times;10<sup>&minus;5</sup>) and Fine-Gray competing-risks model; both still need replication in an independent cohort</li>
           <li>Transcription factor enrichment (ChEA/TRRUST) to identify regulators of SASP in senescent cells</li>
           <li>CDKN2A knockdown in fibroblasts → measure SASP output and CD8<sup>+</sup> T cell migration</li>
         </ul>
@@ -958,6 +957,7 @@
           <tr><td>Correlations</td><td>Interactive scatter (any score vs IFN-&#947; / CD8 fraction), per-type &rho;</td></tr>
           <tr><td>Survival</td><td>Cox forest plot, per-tumor-type log-rank table, interactive Kaplan-Meier explorer</td></tr>
           <tr><td>Pathway</td><td>Interactive p16/CDK4-6/Rb/E2F pathway diagram</td></tr>
+          <tr><td>Figures</td><td>Pre-rendered figures from the pipeline</td></tr>
           <tr><td>Hypotheses</td><td>Pre-specified hypothesis tests with live results</td></tr>
           <tr><td>Summary</td><td>Narrative synthesis of all findings</td></tr>
         </tbody>
