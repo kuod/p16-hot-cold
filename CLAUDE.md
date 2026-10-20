@@ -87,11 +87,11 @@ The following are the **confirmatory** hypotheses for this analysis. All other t
 
 ## Tumor Purity Notes
 
-TCGA bulk RNA-seq mixes tumor cells with stroma and infiltrating immune cells. Purity estimates (TCGA ABSOLUTE, from Aran et al. 2015) are meant to be downloaded in notebook 01 and used as a covariate in Cox models (notebook 05), but the download currently fails (HTTP 403), so purity is unavailable and no model or deconfounding analysis is purity-adjusted. Spearman correlations involving immune scores should be interpreted with awareness that high-stroma samples inflate immune signals.
+TCGA bulk RNA-seq mixes tumor cells with stroma and infiltrating immune cells. Purity estimates (TCGA ABSOLUTE, PanCanAtlas, Taylor et al. 2018) are downloaded from the NCI GDC in notebook 01 (9,295 of 9,702 samples have a value; median 0.64) and used as a covariate in the Cox and Fine-Gray models (notebook 05) and in the purity-adjusted SASP / IFN-γ analyses and the purity-quartile plot (notebook 04). The H1 correlation, six-group survival analysis and deletion tests are not purity-adjusted. Spearman correlations involving immune scores should be interpreted with awareness that high-stroma samples inflate immune signals.
 
 ## New Data Sources (added)
 
-- **TCGA ABSOLUTE purity** — UCSC Xena (Aran et al. 2015 consensus estimates). NOTE: the current URL returns HTTP 403; purity is unavailable and Cox models run without it.
+- **TCGA ABSOLUTE purity** — TCGA PanCanAtlas ABSOLUTE calls (Taylor et al. 2018) from the NCI GDC; saved as `data/tcga_purity_raw.tsv` and the two-column `data/tcga_purity.tsv`.
 - **Thorsson immune subtypes (C1–C6)** — UCSC Xena (`Subtype_Immune_Model_Based.txt.gz`)
 - **TMB (nonsynonymous mutations/Mb)** — cBioPortal per-study clinical attributes
 - **DSS / PFI survival endpoints** — already in `tcga_clinical_survival.tsv` (used in notebook 05 §8 for the DSS/PFI log-rank tests and §10 for per-type DSS log-rank)

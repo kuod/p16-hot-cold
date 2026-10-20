@@ -417,7 +417,7 @@
     </a>
     <span class="badge">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      TCGA &bull; ~9,900 samples &bull; 32 cancer types
+      TCGA &bull; ~9,700 samples &bull; 32 cancer types
     </span>
     <span class="badge">Python &bull; R &bull; Streamlit</span>
   </div>
@@ -435,23 +435,23 @@
       <p>
         Cellular senescence drives a pro-inflammatory secretory program (SASP) that recruits immune cells,
         yet CDKN2A/p16 — the canonical senescence effector — is frequently deleted in cancer.
-        We used TCGA pan-cancer RNA-seq (~9,900 samples, 32 tumor types) to test whether p16/CDKN2A
+        We used TCGA pan-cancer RNA-seq (9,702 samples, 32 tumor types) to test whether p16/CDKN2A
         expression marks immune-inflamed ("hot") tumors and whether that immune-senescence axis
         predicts overall survival.
       </p>
       <p>
         Across five pre-specified confirmatory hypotheses, we find that CDKN2A expression correlates
-        modestly but consistently with an IFN-&#947; immune signature (pooled Spearman &rho; = 0.16; median within-tumor-type &rho; = 0.11),
+        modestly but consistently with an IFN-&#947; immune signature (pooled Spearman &rho; = 0.15; median within-tumor-type &rho; = 0.11),
         that SASP scores are significantly higher in hot tumors, and that CDKN2A deletion is enriched in
         cold tumors only after stratifying by tumor type (the pooled comparison points the other way).
         The pre-specified claim that p16-high/hot tumors have the best survival and p16-low/cold the worst
-        is <em>not</em> supported: the unstratified 6-group log-rank (p = 3.3&times;10<sup>&minus;3</sup>) is lost
-        after stratifying by tumor type (p = 0.077).
+        is <em>not</em> supported: the unstratified 6-group log-rank (p = 1.5&times;10<sup>&minus;4</sup>) is lost
+        after stratifying by tumor type (p = 0.058).
       </p>
       <p>
         However, CDKN2A expression is <em>not</em> an independent predictor of survival after
-        adjusting for the IFN-&#947; score (HR 0.989, p = 0.16), i.e. there is no evidence of an independent association.
-        An exploratory CDKN2A &times; IFN-&#947; interaction is significant (p = 1.7&times;10<sup>&minus;5</sup>), so this is not a simple case of the
+        adjusting for the IFN-&#947; score, tumor purity (ABSOLUTE), TMB and tumor type (HR 0.993, p = 0.40), i.e. there is no evidence of an independent association.
+        An exploratory CDKN2A &times; IFN-&#947; interaction is significant (p = 5.8&times;10<sup>&minus;6</sup>), so this is not a simple case of the
         immune signature subsuming the senescence signal. Observational data cannot establish whether p16 acts upstream of immune recruitment.
       </p>
     </div>
@@ -630,9 +630,9 @@
       <div class="finding-card confirmed">
         <div class="label">H1 &mdash; Confirmed</div>
         <h3>CDKN2A expression correlates with immune infiltration</h3>
-        <div class="result">Pan-cancer Spearman &rho; = 0.16 (median within-type &rho; = 0.11), p &lt; 0.001</div>
+        <div class="result">Pan-cancer Spearman &rho; = 0.15 (full cohort; 0.165 in the 25 tumor types with n &ge; 100; median within-type &rho; = 0.11), p = 1&times;10<sup>&minus;49</sup></div>
         <p class="interp">
-          Weak positive correlation across ~9,900 samples (pooled across tumor types, which inflates it
+          Weak positive correlation across 9,702 samples (pooled across tumor types, which inflates it
           somewhat). Strongest within kidney chromophobe, thyroid and ovarian cancer; negative in DLBCL and
           stomach; essentially none in melanoma (SKCM) and GBM.
         </p>
@@ -641,7 +641,7 @@
             <a href="figures/cdkn2a_vs_ifng_scatter.png">
               <img src="figures/cdkn2a_vs_ifng_scatter.png" alt="Pan-cancer scatter: CDKN2A expression vs IFN-γ score" />
             </a>
-            <figcaption>Pan-cancer scatter (n ≈ 9,900, includes a few duplicated aliquots). ρ = 0.16, p = 1.7×10⁻⁵⁶.</figcaption>
+            <figcaption>Pan-cancer scatter (n = 9,702, one row per TCGA sample ID). ρ = 0.15, p = 1.3×10⁻⁴⁹.</figcaption>
           </figure>
           <figure>
             <a href="figures/cdkn2a_ifng_corr_by_type.png">
@@ -655,18 +655,22 @@
       <div class="finding-card confirmed">
         <div class="label">H2 &mdash; Confirmed</div>
         <h3>SASP score is higher in hot tumors</h3>
-        <div class="result">Hot median NES &minus;0.07 vs cold &minus;0.16; Kruskal-Wallis p &lt; 0.001 (three-group, pooled across tumor types)</div>
+        <div class="result">Hot median NES &minus;0.07 vs cold &minus;0.16; Kruskal-Wallis p = 8.5&times;10<sup>&minus;259</sup> (three-group, pooled across tumor types)</div>
         <p class="interp">
           The senescence-associated secretory phenotype signature is definitively enriched in
           immune-inflamed tumors. Caveat: the SASP score is computed on a restricted gene universe and is
-          confounded by stromal content (no purity adjustment), so this does not show that SASP drives T cell recruitment.
+          partly driven by stromal content (SASP vs ABSOLUTE purity &rho; = &minus;0.35). After residualising SASP on purity the
+          hot &gt; cold difference remains (Kruskal-Wallis p = 3&times;10<sup>&minus;90</sup>; SASP&ndash;IFN-&#947; &rho; falls from 0.37 to 0.24),
+          so it is not purely a stromal artefact, but it is attenuated, and this does not show that SASP drives T cell recruitment.
+          Descriptively, median SASP is higher in hot than cold tumors in 24 of the 26 tumor types with at least 5 tumors in each group
+          (not a formal test).
         </p>
         <div class="figs">
           <figure>
             <a href="figures/sasp_score_hot_cold.png">
               <img src="figures/sasp_score_hot_cold.png" alt="SASP ssGSEA score distribution by immune phenotype" />
             </a>
-            <figcaption>SASP ssGSEA score distribution across hot, intermediate, and cold tumors. Kruskal-Wallis p = 9.5×10⁻²⁵⁷.</figcaption>
+            <figcaption>SASP ssGSEA score distribution across hot, intermediate, and cold tumors. Kruskal-Wallis p = 8.5×10⁻²⁵⁹.</figcaption>
           </figure>
         </div>
       </div>
@@ -674,10 +678,10 @@
       <div class="finding-card confirmed">
         <div class="label">H3 &mdash; Mixed</div>
         <h3>CDKN2A deletion is enriched in cold tumors</h3>
-        <div class="result">Pooled: deletion in 31.7% of cold vs 38.6% of hot tumors (&chi;&sup2; p &lt; 0.001, <em>opposite</em> to H3). Stratified by tumor type: Mantel-Haenszel OR 1.30 (95% CI 1.12&ndash;1.50), p = 4&times;10<sup>&minus;4</sup>, cold &gt; hot</div>
+        <div class="result">Pooled: deletion in 31.3% of cold vs 39.2% of hot tumors (&chi;&sup2; p &lt; 0.001, <em>opposite</em> to H3). Stratified by tumor type: Mantel-Haenszel OR 1.25 (95% CI 1.08&ndash;1.44), p = 2.6&times;10<sup>&minus;3</sup>, cold &gt; hot (in 21 of 29 tumor types)</div>
         <p class="interp">
           The pooled comparison is confounded by tumor type (Simpson&rsquo;s paradox): hot-leaning tumor types
-          carry more CDKN2A deletions. Within tumor types, deletion is modestly more frequent in cold tumors.
+          carry more CDKN2A deletions. Within tumor types, deletion is modestly more frequent in cold tumors (supported, but a weaker effect than the pooled difference in the opposite direction suggests).
           This is an association only; it does not show that deletion causes immune exclusion.
         </p>
         <div class="figs">
@@ -693,16 +697,16 @@
       <div class="finding-card partial">
         <div class="label">H4 &mdash; Not supported</div>
         <h3>Hot/p16-high tumors show the best overall survival</h3>
-        <div class="result">6-group log-rank: unstratified p = 3.3&times;10<sup>&minus;3</sup>, stratified by tumor type p = 0.077; the pre-specified ordering (hot+p16-high best, cold+p16-low worst) is not observed</div>
+        <div class="result">6-group log-rank: unstratified p = 1.5&times;10<sup>&minus;4</sup>, stratified by tumor type p = 0.058; the pre-specified ordering (hot+p16-high best, cold+p16-low worst) is not observed</div>
         <p class="interp">
-          The pre-specified ordering is not observed (median OS: cold/p16-low 9.5 y, hot/p16-high 7.8 y), and the global log-rank p = 3.3&times;10<sup>&minus;3</sup> is unstratified; stratified by tumor type p = 0.077. In per-tumor-type three-group log-rank tests (non-directional), three types pass FDR &lt; 0.05: LGG (p &lt; 10<sup>&minus;15</sup>; only 4 hot tumors), KIRP and PAAD; LUAD (padj 0.0501) and UVM (padj 0.060) narrowly miss.
+          The pre-specified ordering is not observed (median OS: cold/p16-low 10.8 y, hot/p16-high 7.2 y; cold/p16-high 7.3 y, hot/p16-low 8.1 y), and the global log-rank p = 1.5&times;10<sup>&minus;4</sup> is unstratified; stratified by tumor type p = 0.058, above the pre-specified &alpha; = 0.01. In per-tumor-type three-group log-rank tests (non-directional), three types pass FDR &lt; 0.05: LGG (p &lt; 10<sup>&minus;15</sup>; only 4 hot tumors), KIRP and PAAD; LUAD (padj 0.059) and UVM (padj 0.060) narrowly miss.
         </p>
         <div class="figs">
           <figure>
             <a href="figures/km_4group.png">
               <img src="figures/km_4group.png" alt="Kaplan-Meier overall survival: immune tertile × p16 high/low" />
             </a>
-            <figcaption>Kaplan-Meier OS curves stratified by immune phenotype (cold/intermediate/hot) and p16 status (high/low within tumor type). Six groups (3 immune tertiles × 2 p16 groups); unstratified log-rank p = 3.3×10⁻³, stratified by tumor type p = 0.077.</figcaption>
+            <figcaption>Kaplan-Meier OS curves stratified by immune phenotype (cold/intermediate/hot) and p16 status (high/low within tumor type). Six groups (3 immune tertiles × 2 p16 groups); unstratified log-rank p = 1.5×10⁻⁴, stratified by tumor type p = 0.058.</figcaption>
           </figure>
         </div>
       </div>
@@ -711,21 +715,25 @@
         <div class="label">H5 &mdash; Partial / Informative null</div>
         <h3>IFN-&#947; is the independent OS predictor; CDKN2A is not</h3>
         <div class="result">
-          CDKN2A: HR 0.989 (95% CI 0.973&ndash;1.005), p = 0.16 (ns)<br>
-          IFN-&#947; score: HR 0.907 (95% CI 0.856&ndash;0.961), p &lt; 0.001
+          CDKN2A: HR 0.993 (95% CI 0.977&ndash;1.009), p = 0.40 (ns)<br>
+          IFN-&#947; score: HR 0.930 (95% CI 0.873&ndash;0.991), p = 0.024 (nominal)
         </div>
         <p class="interp">
-          After adjusting for the IFN-&#947; score (and age, TMB, other markers, stratified by tumor type; tumor purity was unavailable and is not
-          included), CDKN2A expression has no significant independent association with survival. CDKN1A (p21) shows
-          independent protective effect (HR 0.935, p = 0.002); SERPINE1 shows independent risk
-          (HR 1.161, p &lt; 0.001).
+          After adjusting for the IFN-&#947; score, age, ABSOLUTE tumor purity, TMB and other markers, stratified by tumor type
+          (n = 8,878 complete cases, 2,479 events), CDKN2A expression has no significant independent association with survival.
+          The IFN-&#947; association is nominal only (p = 0.024 does not meet the &alpha; = 0.01 used for the pre-specified hypotheses; it was
+          0.907 in an earlier model without purity, on a different sample). Purity itself was associated with higher hazard (HR 1.29 per unit, p = 0.044).
+          CDKN1A (p21) shows a protective association (HR 0.937, p = 0.003); SERPINE1 shows independent risk
+          (HR 1.171, p &lt; 0.001). In the Fine-Gray model for cancer-specific death (not stratified by tumor type, n = 8,590) CDKN2A has a
+          sub-distribution HR of 1.050 (1.028&ndash;1.072, p = 6&times;10<sup>&minus;6</sup>), i.e. above 1, the opposite sign to the
+          non-significant all-cause Cox estimate; the models differ in endpoint, stratification and sample, so this is hypothesis-generating.
         </p>
         <div class="figs">
           <figure>
             <a href="figures/cox_forest_plot.png">
               <img src="figures/cox_forest_plot.png" alt="Cox proportional hazards forest plot" />
             </a>
-            <figcaption>Cox PH forest plot (stratified by tumor type). IFN-γ score and CDKN1A are independently protective; SERPINE1 is independently hazardous. CDKN2A expression is not significant after adjustment.</figcaption>
+            <figcaption>Cox PH forest plot (stratified by tumor type). Purity-adjusted model. IFN-γ score (nominal) and CDKN1A are associated with longer survival; SERPINE1 is independently hazardous. CDKN2A expression is not significant after adjustment.</figcaption>
           </figure>
         </div>
       </div>
@@ -769,14 +777,14 @@
           <tr>
             <td><strong>cBioPortal</strong> (TCGA PanCancer Atlas 2018)</td>
             <td>CDKN2A, TP53, RB1, ATM, PTEN copy-number &amp; mutations</td>
-            <td>~9,898</td>
+            <td>9,356 of 9,702</td>
             <td>Genomic status (deleted / mutated / wild-type) for H3</td>
           </tr>
           <tr>
-            <td><strong>Aran et al. 2015</strong> (TCGA ABSOLUTE)</td>
-            <td>Consensus tumor purity estimates</td>
-            <td>not available</td>
-            <td>Download link is dead (HTTP 403); purity is currently <em>not</em> used</td>
+            <td><strong>Taylor et al. 2018</strong> (TCGA PanCanAtlas ABSOLUTE, via NCI GDC)</td>
+            <td>ABSOLUTE tumor purity and ploidy calls</td>
+            <td>9,295 of 9,702 (95.8%)</td>
+            <td>Purity covariate in the Cox / Fine-Gray models; purity-adjusted SASP and IFN-&#947; sensitivity analyses (notebooks 04 and 05)</td>
           </tr>
           <tr>
             <td><strong>MSigDB</strong></td>
@@ -861,15 +869,18 @@
       </li>
       <li>
         <strong>Tumor purity confounding.</strong>
-        High-stroma samples inflate immune scores. Tumor-purity data are unavailable (download blocked, HTTP 403), so no analysis
-        is purity-adjusted. Spearman correlations involving immune scores should
-        be interpreted with this caveat in mind.
+        High-stroma samples inflate immune scores. ABSOLUTE purity (95.8% coverage) is included in the Cox and
+        competing-risks models and in a purity-adjusted SASP / IFN-&#947; sensitivity analysis, but the H1 correlation, the
+        six-group survival analysis and the deletion tests are not purity-adjusted, purity estimates are imperfect, and the SASP
+        adjustment is a pooled linear residualisation. Stromal confounding is reduced, not eliminated. Descriptively, CDKN2A
+        expression is similar or slightly lower in deleted than intact tumors in every purity quartile (wide overlap, no formal
+        test), so high expression in deleted samples is not confined to low-purity tumors.
       </li>
       <li>
         <strong>Modest effect sizes.</strong>
-        Spearman &rho; = 0.16 is statistically detectable at n &asymp; 9,900
-        but explains only ~2.5% of variance. Survival HRs are significant but clinically
-        modest (IFN-&#947; HR 0.91 = 9% hazard reduction per unit).
+        Spearman &rho; = 0.15 is statistically detectable at n &asymp; 9,700
+        but explains only ~2% of variance. Survival HRs are significant but clinically
+        modest (IFN-&#947; HR 0.93 = 7% hazard reduction per unit, nominal p = 0.024).
       </li>
       <li>
         <strong>Observational design — correlation, not causation.</strong>
@@ -930,7 +941,7 @@
         <div class="icon">⚙️</div>
         <h3>Mechanistic &amp; Statistical Extensions</h3>
         <ul>
-          <li>Already done (notebook 05, exploratory): CDKN2A &times; IFN-&#947; interaction term in Cox model (HR 0.964, p = 1.7&times;10<sup>&minus;5</sup>) and Fine-Gray competing-risks model; both still need replication in an independent cohort</li>
+          <li>Already done (notebook 05, exploratory): CDKN2A &times; IFN-&#947; interaction term in Cox model (HR 0.961, p = 5.8&times;10<sup>&minus;6</sup>) and Fine-Gray competing-risks model; both still need replication in an independent cohort</li>
           <li>Transcription factor enrichment (ChEA/TRRUST) to identify regulators of SASP in senescent cells</li>
           <li>CDKN2A knockdown in fibroblasts → measure SASP output and CD8<sup>+</sup> T cell migration</li>
         </ul>

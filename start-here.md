@@ -26,7 +26,7 @@ jupyter lab
 
 Everything downloads automatically — UCSC Xena RNA-seq, clinical survival table,
 Thorsson et al. 2018 CIBERSORT immune fractions (NCI GDC), and cBioPortal CNA/mutation
-data. No manual steps are needed for the downloads that work. Known gap: the tumor-purity file (Aran et al. 2015) currently returns HTTP 403, so `data/tcga_purity.tsv` is not produced; the pipeline still runs, but no analysis is purity-adjusted (supply the file manually to fix). Expect ~30 minutes on a typical connection.
+data. No manual steps are needed. Tumor purity (TCGA PanCanAtlas ABSOLUTE calls, Taylor et al. 2018) is downloaded from the NCI GDC into `data/tcga_purity_raw.tsv` and `data/tcga_purity.tsv`, and is used as a covariate in the notebook 05 Cox models. Expect ~30 minutes on a typical connection.
 
 ---
 
@@ -123,7 +123,7 @@ The largest item is the raw TCGA expression matrix (~316 MB, ~30 min to redownlo
 
 Before trusting results, confirm:
 
-- [ ] `nrow` of both parquet files matches (inner join should retain ~9.9k samples)
+- [ ] `nrow` of both parquet files matches (inner join should retain ~9.7k samples, one row per TCGA sample ID)
 - [ ] Pan-cancer Spearman ρ (CDKN2A vs IFN-γ) from R notebook 04 matches the Python
       scatter in the dashboard within ±0.01
 - [ ] Hot tumors are *expected* to show better prognosis in known immunotherapy-responsive types
