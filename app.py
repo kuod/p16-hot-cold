@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from pathway_diagram import streamlit_html as _pathway_html
 from utils import validate_parquet
+import hyp_stats
+from scipy import stats as _sps
 
 DATA = Path("data")
 FIGURES = Path("figures")
@@ -72,10 +74,19 @@ def load_data():
 
     cox = pd.read_csv(DATA / "cox_results.csv")
     lr = pd.read_csv(DATA / "logrank_per_type.csv")
-    return master, cox, lr
+    int_path = DATA / "cox_interaction_results.csv"
+    cox_int = pd.read_csv(int_path) if int_path.exists() else None
+    return master, cox, lr, cox_int
 
 
-master, cox, lr = load_data()
+master, cox, lr, cox_int = load_data()
+
+
+@st.cache_data
+def _h4_six_group(frame):
+    """6-group log-rank (notebook 05 §4): recomputed from the loaded data."""
+    d = hyp_stats.add_group6(frame)
+    return hyp_stats.six_group_survival(d)
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.title("🧬 Hot/Cold × p16")
@@ -728,40 +739,62 @@ elif page == "Hypotheses":
     )
 
     # ── Compute observed stats from loaded data ────────────────────────────────
-    # H1: Spearman ρ(CDKN2A_expr, IFN-γ score)
-    h1_rho, h1_n = None, 0
+    # H1: single Spearman test (notebook 04 §2) + median within-tumor-type rho
+    h1_rho, h1_n, h1_p, h1_within = None, 0, None, None
     if "CDKN2A_expr" in df.columns and "ifng_score" in df.columns:
         _h1 = df[["CDKN2A_expr", "ifng_score"]].dropna()
         h1_n = len(_h1)
-        h1_rho = _h1.corr(method="spearman").iloc[0, 1]
+        if h1_n > 2:
+            h1_rho, h1_p = _sps.spearmanr(_h1["CDKN2A_expr"], _h1["ifng_score"])
+            h1_within = hyp_stats.within_type_spearman(df, "CDKN2A_expr", "ifng_score")
 
-    # H2: SASP score hot vs cold Mann-Whitney
-    h2_hot_med, h2_cold_med = None, None
+    # H2: 3-group Kruskal-Wallis (notebook 04 §5) + hot/cold medians
+    h2_hot_med, h2_cold_med, h2_kw_p = None, None, None
     if "SASP" in df.columns and "hot_cold" in df.columns:
         h2_hot  = df.loc[df["hot_cold"] == "hot",  "SASP"].dropna()
         h2_cold = df.loc[df["hot_cold"] == "cold", "SASP"].dropna()
         if len(h2_hot) and len(h2_cold):
             h2_hot_med  = h2_hot.median()
             h2_cold_med = h2_cold.median()
+            _h2_groups = [
+                df.loc[df["hot_cold"] == g, "SASP"].dropna()
+                for g in ("hot", "intermediate", "cold")
+            ]
+            _h2_groups = [g for g in _h2_groups if len(g)]
+            if len(_h2_groups) >= 2:
+                h2_kw_p = _sps.kruskal(*_h2_groups).pvalue
 
-    # H3: CDKN2A deletion rate hot vs cold
-    h3_cold_rate, h3_hot_rate = None, None
-    if "cdkn2a_altered" in df.columns and "hot_cold" in df.columns:
-        _h3_cold = df.loc[df["hot_cold"] == "cold",  "cdkn2a_altered"].dropna()
-        _h3_hot  = df.loc[df["hot_cold"] == "hot",   "cdkn2a_altered"].dropna()
-        if len(_h3_cold) and len(_h3_hot):
-            h3_cold_rate = 100 * _h3_cold.mean()
-            h3_hot_rate  = 100 * _h3_hot.mean()
+    # H3: tumor-type-stratified Mantel-Haenszel on CDKN2A *deletion* (notebook 04 §4).
+    # The pooled hot-vs-cold rates are kept for display only: they are confounded
+    # by tumor type (Simpson's paradox) and must not drive the verdict.
+    h3_cold_rate, h3_hot_rate, h3_mh = None, None, None
+    if "cdkn2a_deleted" in df.columns and "hot_cold" in df.columns:
+        _h3 = hyp_stats.stratified_deletion_test(df)
+        if _h3["n_strata"] > 0 and not np.isnan(_h3["or"]):
+            h3_mh = _h3
+            h3_cold_rate = _h3["pooled_cold_pct"]
+            h3_hot_rate = _h3["pooled_hot_pct"]
 
-    # H4 / H5: from Cox results
+    # H4: 6-group log-rank, unstratified and stratified (notebook 05 §4)
+    h4 = None
+    if all(c in df.columns for c in ["hot_cold", "OS", "OS.time_years", "CDKN2A_expr"]):
+        try:
+            h4 = _h4_six_group(df[["tumor_type", "hot_cold", "CDKN2A_expr", "OS", "OS.time_years"]])
+        except Exception:  # keep the dashboard alive; card shows "not available"
+            h4 = None
+
+    # H5: Cox main effect (cox_results.csv) and CDKN2A x IFN-γ interaction
+    # (cox_interaction_results.csv), both written by notebook 05 §6
+    h5_int = None
+    if cox_int is not None:
+        _ir = cox_int[cox_int["term"].str.contains(":", na=False)]
+        if len(_ir):
+            h5_int = _ir.iloc[0]
     cox_cdkn2a = cox[cox["term"].str.contains("CDKN2A", case=False, na=False)]
     h5_hr = cox_cdkn2a["estimate"].values[0] if len(cox_cdkn2a) else None
     h5_lo = cox_cdkn2a["conf.low"].values[0] if len(cox_cdkn2a) else None
     h5_hi = cox_cdkn2a["conf.high"].values[0] if len(cox_cdkn2a) else None
     h5_p  = cox_cdkn2a["p.value"].values[0] if len(cox_cdkn2a) else None
-
-    # Fraction of tumor types with significant hot>cold log-rank (padj < 0.05)
-    lr_sig_frac = (lr["padj"] < 0.05).mean() if "padj" in lr.columns else None
 
     # H6: Suppressive SASP in cold tumors
     h6_cold_med, h6_hot_med = None, None
@@ -940,16 +973,23 @@ elif page == "Hypotheses":
             return None, "Data not yet available — re-run notebooks 01–03."
         strength = "strong" if abs(h1_rho) > 0.4 else ("moderate" if abs(h1_rho) > 0.2 else "weak")
         in_range = 0.10 <= h1_rho <= 0.25
-        if h1_rho > 0:
+        within = (f" Median within-tumor-type ρ = {h1_within:.3f}." if h1_within is not None and not np.isnan(h1_within) else "")
+        ptxt = f", p = {h1_p:.2e}" if h1_p is not None else ""
+        if h1_rho > 0 and h1_p is not None and h1_p < 0.01:
             verdict = "supported" if in_range else ("supported (stronger than expected)" if h1_rho > 0.25 else "supported (weaker than expected)")
             return True, (
-                f"**H1 {verdict}.** Pan-cancer ρ = {h1_rho:.3f} — a {strength} positive correlation. "
-                f"The direction is consistent with SASP-driven IFN-γ signalling. "
-                f"{'Effect size is within the pre-specified range (0.10–0.25).' if in_range else f'Effect size falls outside the pre-specified range (0.10–0.25).'}"
+                f"**H1 {verdict}.** Pooled Spearman ρ = {h1_rho:.3f}{ptxt} — a {strength} positive correlation "
+                f"(single Spearman test, α = 0.01).{within} "
+                f"{'Effect size is within the pre-specified range (0.10–0.25).' if in_range else 'Effect size falls outside the pre-specified range (0.10–0.25).'}"
+            )
+        elif h1_rho > 0:
+            return False, (
+                f"**H1 not supported.** Pooled Spearman ρ = {h1_rho:.3f}{ptxt} is positive but does not reach "
+                f"the Bonferroni threshold α = 0.01.{within}"
             )
         else:
             return False, (
-                f"**H1 not supported.** Pan-cancer ρ = {h1_rho:.3f} — a {strength} negative correlation, "
+                f"**H1 not supported.** Pooled Spearman ρ = {h1_rho:.3f}{ptxt} — a {strength} negative correlation, "
                 "contrary to the hypothesis that p16/SASP drives immune infiltration."
             )
 
@@ -957,53 +997,72 @@ elif page == "Hypotheses":
         if h2_hot_med is None:
             return None, "Data not yet available — re-run notebook 03."
         delta = h2_hot_med - h2_cold_med
-        if delta > 0:
+        ptxt = f"Kruskal-Wallis (3 groups) p = {h2_kw_p:.2e}" if h2_kw_p is not None else "Kruskal-Wallis p unavailable"
+        sig = h2_kw_p is not None and h2_kw_p < 0.01
+        if delta > 0 and sig:
             return True, (
-                f"**H2 supported.** Hot tumors have higher median SASP scores than cold tumors "
+                f"**H2 supported.** {ptxt}; hot tumors have higher median SASP scores than cold tumors "
                 f"(Δ = {delta:+.3f}), consistent with SASP cytokines promoting immune infiltration."
+            )
+        elif delta > 0:
+            return False, (
+                f"**H2 not supported.** Hot median SASP exceeds cold (Δ = {delta:+.3f}) but {ptxt} "
+                "does not reach α = 0.01."
             )
         else:
             return False, (
                 f"**H2 not supported.** Cold tumors have equal or higher median SASP scores than hot tumors "
-                f"(Δ = {delta:+.3f}), which does not support the hypothesis."
+                f"(Δ = {delta:+.3f}); {ptxt}."
             )
 
     def _h3_conclusion():
-        if h3_cold_rate is None:
-            return None, "Alteration data not yet available — re-run notebooks 01 and 03."
-        diff = h3_cold_rate - h3_hot_rate
-        if diff > 0:
-            return True, (
-                f"**H3 supported.** CDKN2A alteration is more frequent in cold tumors ({h3_cold_rate:.1f}%) "
-                f"than hot ({h3_hot_rate:.1f}%, Δ = {diff:+.1f} pp), consistent with p16 loss promoting "
-                "immune exclusion by suppressing SASP."
+        if h3_mh is None:
+            return None, "Deletion data not yet available — re-run notebooks 01 and 03."
+        m = h3_mh
+        stat = (
+            f"Tumor-type-stratified Mantel-Haenszel (cold vs hot, {m['n_strata']} types): "
+            f"OR = {m['or']:.3f} (95% CI {m['ci_low']:.3f}–{m['ci_high']:.3f}), p = {m['p']:.2e}; "
+            f"cold > hot in {m['cold_gt_hot_strata']}/{m['n_strata']} strata."
+        )
+        pooled = (
+            f" Pooled CDKN2A deletion rate: cold {h3_cold_rate:.1f}% vs hot {h3_hot_rate:.1f}% "
+        )
+        confounded = h3_cold_rate < h3_hot_rate
+        if m["or"] > 1 and m["p"] < 0.01:
+            note = (
+                "(the pooled direction is the opposite — confounded by tumor type, Simpson's paradox — so the stratified test decides)."
+                if confounded else "(pooled direction agrees)."
             )
+            return True, f"**H3 supported (stratified).** {stat}{pooled}{note}"
+        elif m["or"] > 1:
+            return False, f"**H3 not supported at α = 0.01.** {stat}{pooled}"
         else:
-            return False, (
-                f"**H3 not supported.** CDKN2A alteration rates do not favour cold tumors "
-                f"(cold: {h3_cold_rate:.1f}%, hot: {h3_hot_rate:.1f}%, Δ = {diff:+.1f} pp)."
-            )
+            return False, f"**H3 not supported.** {stat}{pooled}"
 
     def _h4_conclusion():
-        if lr_sig_frac is None:
-            return None, "Survival data not yet available — re-run notebook 05."
-        n_sig = int(round(lr_sig_frac * len(lr)))
-        n_tot = len(lr)
-        if lr_sig_frac > 0.3:
-            return True, (
-                f"**H4 supported.** {n_sig}/{n_tot} tumor types ({lr_sig_frac*100:.0f}%) show significantly "
-                "better OS in hot vs cold tumors (padj < 0.05). The immune phenotype × p16 group separation "
-                "is present across the majority of cancer contexts tested."
-            )
-        elif lr_sig_frac > 0:
-            return False, (
-                f"**H4 partially supported.** Only {n_sig}/{n_tot} tumor types ({lr_sig_frac*100:.0f}%) reach "
-                "significance (padj < 0.05). The effect is present but limited to a minority of cancer types."
-            )
-        else:
-            return False, (
-                "**H4 not supported.** No tumor type shows a statistically significant hot>cold OS difference after BH correction."
-            )
+        if h4 is None:
+            return None, ("Survival data not yet available — re-run notebook 05. "
+                          "Documented values (README/summary.md): unstratified p = 3.3e-3, stratified p = 0.077.")
+        pu, ps = h4["p_unstrat"], h4["p_strat"]
+        med = h4["medians"]
+        best, worst = "hot / p16-high", "cold / p16-low"
+        ordering = hyp_stats.h4_ordering_observed(med)
+        mtxt = (
+            f"median OS {worst} = {med.get(worst, float('nan')):.2f} y vs {best} = {med.get(best, float('nan')):.2f} y"
+        )
+        stat = (
+            f"6-group log-rank: unstratified p = {pu:.2e}, stratified by tumor type p = {ps:.3f}; {mtxt}."
+        )
+        if pu < 0.01 and ps < 0.01 and ordering:
+            return True, f"**H4 supported.** {stat} The pre-specified ordering is observed."
+        notes = []
+        if ps >= 0.01:
+            notes.append("the stratified test is above α = 0.01 (the unstratified result is confounded by tumor type)")
+        if pu >= 0.01:
+            notes.append("the unstratified test is above α = 0.01")
+        if not ordering:
+            notes.append("the claimed ordering (cold/p16-low worst, hot/p16-high best) is NOT observed")
+        return False, f"**H4 not supported.** {stat} " + "; ".join(notes).capitalize() + "."
 
     def _h5_conclusion():
         if h5_hr is None:
@@ -1011,27 +1070,22 @@ elif page == "Hypotheses":
         protective = h5_hr < 1.0
         sig = h5_p < 0.05
         bon_sig = h5_p < 0.01
+        int_txt = ""
+        if h5_int is not None:
+            int_txt = (
+                f" CDKN2A × IFN-γ interaction: HR = {h5_int['estimate']:.3f} "
+                f"(95% CI {h5_int['conf.low']:.3f}–{h5_int['conf.high']:.3f}), p = {h5_int['p.value']:.2e} "
+                "(the CDKN2A effect depends on IFN-γ level). Not adjusted for tumor purity."
+            )
+        main = f"CDKN2A main effect HR = {h5_hr:.3f} (95% CI {h5_lo:.3f}–{h5_hi:.3f}), p = {h5_p:.2e}."
         if protective and bon_sig:
-            return True, (
-                f"**H5 supported (Bonferroni).** CDKN2A expression is an independent protective predictor "
-                f"(HR = {h5_hr:.3f}, 95% CI: {h5_lo:.3f}–{h5_hi:.3f}, p = {h5_p:.2e}), surviving the "
-                "Bonferroni threshold of α = 0.01."
-            )
+            return True, f"**H5 supported (Bonferroni).** {main}{int_txt}"
         elif protective and sig:
-            return True, (
-                f"**H5 supported (nominal).** CDKN2A expression is protective (HR = {h5_hr:.3f}, p = {h5_p:.2e}) "
-                "but does not reach the Bonferroni threshold of α = 0.01 for this confirmatory test."
-            )
+            return True, f"**H5 supported (nominal only).** {main} Does not reach α = 0.01.{int_txt}"
         elif protective:
-            return False, (
-                f"**H5 trend only.** HR = {h5_hr:.3f} is in the protective direction but is not statistically "
-                f"significant (p = {h5_p:.2e})."
-            )
+            return False, f"**H5 not supported as an independent main effect.** {main} Protective direction but not significant.{int_txt}"
         else:
-            return False, (
-                f"**H5 not supported.** HR = {h5_hr:.3f} is ≥ 1 (p = {h5_p:.2e}), indicating no independent "
-                "protective effect of CDKN2A expression on OS."
-            )
+            return False, f"**H5 not supported.** {main} HR ≥ 1.{int_txt}"
 
     def _h6_conclusion():
         if h6_cold_med is None:
@@ -1145,7 +1199,7 @@ elif page == "Hypotheses":
         cdkn2a_context = ""
         if h3_cold_rate is not None:
             cdkn2a_context = (
-                f" For comparison, CDKN2A alteration rate difference is {h3_cold_rate - h3_hot_rate:+.1f} pp — "
+                f" For comparison, the pooled (tumor-type-confounded) CDKN2A deletion rate difference is {h3_cold_rate - h3_hot_rate:+.1f} pp — "
                 f"{'RB1 shows a similar pattern' if diff * (h3_cold_rate - h3_hot_rate) > 0 else 'RB1 shows the opposite pattern'}, "
                 "which is expected given the 9p21 co-deletion locus."
             )
@@ -1374,15 +1428,16 @@ elif page == "Hypotheses":
             "id": "H1",
             "title": "CDKN2A expression correlates positively with IFN-γ score (pan-cancer)",
             "rationale": "p16/CDKN2A promotes SASP → pro-inflammatory cytokines drive T-cell infiltration, producing higher IFN-γ activity in p16-high tumors.",
-            "test": "Spearman ρ (CDKN2A_expr vs IFN-γ score), BH-FDR",
+            "test": "Single Spearman test (CDKN2A_expr vs IFN-γ score, pooled) + median within-tumor-type ρ",
             "expected": "ρ ~ 0.10–0.25 (weak-moderate positive)",
             "notebook": "04 §2",
             "threshold": "Bonferroni α = 0.01",
             "observed": (
-                f"Spearman ρ = **{h1_rho:.3f}** (n = {h1_n:,})"
+                f"Pooled Spearman ρ = **{h1_rho:.3f}** (n = {h1_n:,}, p = {h1_p:.2e})"
+                + (f"; median within-type ρ = **{h1_within:.3f}**" if h1_within is not None and not np.isnan(h1_within) else "")
                 if h1_rho is not None else "_Data not yet loaded_"
             ),
-            "direction_ok": h1_rho is not None and h1_rho > 0,
+            "direction_ok": h1_rho is not None and h1_rho > 0 and h1_p is not None and h1_p < 0.01,
             "conclusion_fn": _h1_conclusion,
         },
         {
@@ -1395,25 +1450,28 @@ elif page == "Hypotheses":
             "threshold": "Bonferroni α = 0.01",
             "observed": (
                 f"Median SASP — hot: **{h2_hot_med:.3f}**, cold: **{h2_cold_med:.3f}** "
-                f"(Δ = {h2_hot_med - h2_cold_med:+.3f})"
-                if h2_hot_med is not None else "_Data not yet loaded_"
+                f"(Δ = {h2_hot_med - h2_cold_med:+.3f}); Kruskal-Wallis p = {h2_kw_p:.2e}"
+                if h2_hot_med is not None and h2_kw_p is not None
+                else ("_Data not yet loaded_" if h2_hot_med is None else f"Median SASP — hot: **{h2_hot_med:.3f}**, cold: **{h2_cold_med:.3f}**")
             ),
-            "direction_ok": h2_hot_med is not None and h2_hot_med > h2_cold_med,
+            "direction_ok": h2_hot_med is not None and h2_hot_med > h2_cold_med and h2_kw_p is not None and h2_kw_p < 0.01,
             "conclusion_fn": _h2_conclusion,
         },
         {
             "id": "H3",
             "title": "CDKN2A deletion is enriched in cold tumors (pan-cancer)",
             "rationale": "Loss of CDKN2A removes senescence braking — reducing SASP — so CDKN2A-deleted tumors should be more immune-excluded (cold).",
-            "test": "Chi-squared (pooled CDKN2A alteration rate, confounded by tumor type); the tumor-type-stratified Mantel-Haenszel test is in notebook 04 §4",
-            "expected": "CDKN2A deletion rate higher in cold tumors, p < 0.01",
+            "test": "Tumor-type-stratified Mantel-Haenszel on CDKN2A deletion (cold vs hot); the pooled chi-squared is confounded by tumor type and shown for reference only",
+            "expected": "Common OR > 1 (deletion more frequent in cold within tumor types), p < 0.01",
             "notebook": "04 §4",
             "threshold": "Bonferroni α = 0.01",
             "observed": (
-                f"Alteration rate — cold: **{h3_cold_rate:.1f}%**, hot: **{h3_hot_rate:.1f}%**"
-                if h3_cold_rate is not None else "_Alteration data not yet available — re-run notebook 03_"
+                f"Stratified MH OR = **{h3_mh['or']:.3f}** (95% CI {h3_mh['ci_low']:.3f}–{h3_mh['ci_high']:.3f}), "
+                f"p = {h3_mh['p']:.2e}; cold > hot in {h3_mh['cold_gt_hot_strata']}/{h3_mh['n_strata']} types. "
+                f"Pooled deletion rate (confounded) — cold: {h3_cold_rate:.1f}%, hot: {h3_hot_rate:.1f}%"
+                if h3_mh is not None else "_Deletion data not yet available — re-run notebook 03_"
             ),
-            "direction_ok": h3_cold_rate is not None and h3_cold_rate > h3_hot_rate,
+            "direction_ok": h3_mh is not None and h3_mh["or"] > 1 and h3_mh["p"] < 0.01,
             "conclusion_fn": _h3_conclusion,
         },
         {
@@ -1421,36 +1479,40 @@ elif page == "Hypotheses":
             "title": "p16-high hot tumors have better OS than p16-low cold tumors",
             "rationale": "If p16/SASP drives immune infiltration, the combination of hot (immune-active) + p16-high should confer the best prognosis; cold + p16-low the worst.",
             "test": "Log-rank (6-group KM: immune tertile × p16-high/low; unstratified and stratified by tumor type in notebook 05 §4)",
-            "expected": "Global log-rank p < 0.01; hot/p16-high best, cold/p16-low worst",
+            "expected": "Log-rank p < 0.01 (also when stratified by tumor type); hot/p16-high best, cold/p16-low worst",
             "notebook": "05 §4",
             "threshold": "Bonferroni α = 0.01",
             "observed": (
-                f"{(lr_sig_frac * 100):.0f}% of tumor types show a significant OS difference across immune groups (per-type 3-group log-rank, padj < 0.05)"
-                if lr_sig_frac is not None else "_Survival data not yet available — re-run notebook 05_"
+                f"6-group log-rank p = **{h4['p_unstrat']:.2e}** (unstratified), **{h4['p_strat']:.3f}** (stratified by tumor type); "
+                f"median OS cold/p16-low {h4['medians'].get('cold / p16-low', float('nan')):.2f} y, "
+                f"hot/p16-high {h4['medians'].get('hot / p16-high', float('nan')):.2f} y"
+                if h4 is not None else "_Survival data not yet available — re-run notebook 05_"
             ),
-            "direction_ok": lr_sig_frac is not None and lr_sig_frac > 0.3,
+            "direction_ok": (h4 is not None and h4["p_unstrat"] < 0.01 and h4["p_strat"] < 0.01
+                             and hyp_stats.h4_ordering_observed(h4["medians"])),
             "conclusion_fn": _h4_conclusion,
         },
         {
             "id": "H5",
             "title": "CDKN2A expression is an independent OS predictor (age-adjusted, strata tumor type)",
             "rationale": "After accounting for age and tumor-type baseline hazards, p16 expression should independently predict survival if its effect is not purely mediated by tumor type.",
-            "test": "Cox PH: CDKN2A_expr coefficient, HR with 95% CI",
+            "test": "Cox PH (strata tumor type; age, IFN-γ, markers, TMB; no purity adjustment): CDKN2A_expr main-effect HR with 95% CI, plus CDKN2A × IFN-γ interaction model",
             "expected": "HR < 1.0 (higher expression → lower hazard), p < 0.05",
             "notebook": "05 §6",
             "threshold": "Bonferroni α = 0.01",
             "observed": (
-                f"HR = **{h5_hr:.3f}** (95% CI: {h5_lo:.3f}–{h5_hi:.3f}), p = {h5_p:.2e}"
+                f"Main effect HR = **{h5_hr:.3f}** (95% CI: {h5_lo:.3f}–{h5_hi:.3f}), p = {h5_p:.2e}"
+                + (f"; interaction HR = **{h5_int['estimate']:.3f}**, p = {h5_int['p.value']:.2e}" if h5_int is not None else "")
                 if h5_hr is not None else "_Cox results not yet available — re-run notebook 05_"
             ),
-            "direction_ok": h5_hr is not None and h5_hr < 1.0,
+            "direction_ok": h5_hr is not None and h5_hr < 1.0 and h5_p < 0.05,
             "conclusion_fn": _h5_conclusion,
         },
         {
             "id": "H6",
             "title": "Suppressive SASP is enriched in cold tumors",
             "rationale": "Cold tumors may not simply lack pro-inflammatory SASP — they may actively secrete immunosuppressive SASP components (TGF-β, IL-10 type) that exclude T cells. This tests whether immune exclusion is active rather than passive.",
-            "test": "Mann-Whitney U (cold vs hot SASP_suppressive NES)",
+            "test": "Median comparison, cold vs hot SASP_suppressive NES (descriptive; direction only, no significance test computed in-app)",
             "expected": "SASP_suppressive NES higher in cold, p < 0.05",
             "notebook": "04 §5 (exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1466,7 +1528,7 @@ elif page == "Hypotheses":
             "id": "H7",
             "title": "Tumor mutational burden (TMB) is higher in hot tumors",
             "rationale": "DNA damage drives both mutational burden and p16-mediated senescence. Hot tumors should accumulate more mutations (neoantigens → immune recognition), and this genotoxic stress should co-occur with elevated p16/SASP.",
-            "test": "Mann-Whitney U (hot vs cold TMB); Spearman ρ(TMB, IFN-γ score)",
+            "test": "Median comparison, hot vs cold TMB (descriptive; direction only); Spearman ρ(TMB, IFN-γ score)",
             "expected": "TMB higher in hot; ρ > 0, p < 0.05",
             "notebook": "04 (exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1512,7 +1574,7 @@ elif page == "Hypotheses":
             "id": "H10",
             "title": "Tumor purity is lower in hot tumors (confound quantification)",
             "rationale": "TCGA bulk RNA-seq mixes tumor and immune cells. High purity = fewer infiltrating cells = lower IFN-γ score by dilution alone. Quantifying this confound is essential for interpreting H1–H5 — if purity fully explains the hot/cold signal, the biology is less compelling.",
-            "test": "Mann-Whitney U (purity in hot vs cold); Spearman ρ(purity, IFN-γ score) — expect negative ρ",
+            "test": "Median comparison, purity in hot vs cold (descriptive; direction only); Spearman ρ(purity, IFN-γ score) — expect negative ρ",
             "expected": "Purity lower in hot; ρ < 0, p < 0.05",
             "notebook": "04 (methodological / exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1626,7 +1688,7 @@ elif page == "Hypotheses":
             "id": "H17",
             "title": "SenMayo score is higher in hot tumors (independent senescence signature validation)",
             "rationale": "SenMayo (Saul et al. 2022, Nature Aging) is currently the best-validated pan-tissue senescence gene set (125 genes, replicated across human and mouse). Testing it independently of the custom SASP score (H2) provides cross-signature validation — if both agree, the senescence–immune link is more robust.",
-            "test": "Mann-Whitney U (hot vs cold SenMayo NES)",
+            "test": "Median comparison, hot vs cold SenMayo NES (descriptive; direction only, no significance test computed in-app)",
             "expected": "SenMayo NES higher in hot, p < 0.05; direction consistent with H2",
             "notebook": "04 §5 (exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1642,7 +1704,7 @@ elif page == "Hypotheses":
             "id": "H18",
             "title": "TNF-α / NF-κB signalling is higher in hot tumors",
             "rationale": "TNF-α is a primary SASP effector cytokine that drives NF-κB-mediated recruitment of immune cells. HALLMARK_TNFA_SIGNALING_VIA_NFKB captures this mechanistic arm specifically — a positive result would give pathway-level resolution to the SASP → immune link in H2.",
-            "test": "Mann-Whitney U (hot vs cold hallmark_tnfa NES)",
+            "test": "Median comparison, hot vs cold hallmark_tnfa NES (descriptive; direction only, no significance test computed in-app)",
             "expected": "hallmark_tnfa higher in hot, p < 0.05",
             "notebook": "04 §5 (exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1658,7 +1720,7 @@ elif page == "Hypotheses":
             "id": "H19",
             "title": "Inflammatory response score is higher in hot tumors",
             "rationale": "HALLMARK_INFLAMMATORY_RESPONSE captures broad NF-κB and cytokine signalling downstream of SASP. Testing it alongside TNF-α (H18) and SASP (H2) allows triangulation: if all three point the same direction, the SASP → immune signal is consistent across multiple gene set definitions.",
-            "test": "Mann-Whitney U (hot vs cold hallmark_inflammatory NES)",
+            "test": "Median comparison, hot vs cold hallmark_inflammatory NES (descriptive; direction only, no significance test computed in-app)",
             "expected": "hallmark_inflammatory higher in hot, p < 0.05",
             "notebook": "04 §5 (exploratory)",
             "threshold": "BH FDR α = 0.05 (exploratory)",
@@ -1853,30 +1915,38 @@ elif page == "Summary":
 
     # ── H3: CDKN2A deletion rate ───────────────────────────────────────────────
     st.subheader("H3 — CDKN2A deletion enriched in cold tumors")
-    if "cdkn2a_altered" in df.columns and "hot_cold" in df.columns:
+    if "cdkn2a_deleted" in df.columns and "hot_cold" in df.columns:
         alt_rates = (
-            df.dropna(subset=["cdkn2a_altered", "hot_cold"])
-            .groupby("hot_cold")["cdkn2a_altered"]
+            df.dropna(subset=["cdkn2a_deleted", "hot_cold"])
+            .groupby("hot_cold")["cdkn2a_deleted"]
             .mean()
             .mul(100)
             .reset_index()
-            .rename(columns={"cdkn2a_altered": "pct_altered"})
+            .rename(columns={"cdkn2a_deleted": "pct_deleted"})
         )
-        cold_r = alt_rates.loc[alt_rates["hot_cold"] == "cold",  "pct_altered"].values
-        hot_r  = alt_rates.loc[alt_rates["hot_cold"] == "hot",   "pct_altered"].values
+        cold_r = alt_rates.loc[alt_rates["hot_cold"] == "cold",  "pct_deleted"].values
+        hot_r  = alt_rates.loc[alt_rates["hot_cold"] == "hot",   "pct_deleted"].values
         cold_r = cold_r[0] if len(cold_r) else float("nan")
         hot_r  = hot_r[0]  if len(hot_r)  else float("nan")
+        _mh = hyp_stats.stratified_deletion_test(df)
         st.markdown(
-            f"CDKN2A alteration rate — cold: **{cold_r:.1f}%**, hot: **{hot_r:.1f}%**. "
-            f"{'Cold tumors have a higher alteration rate, supporting H3.' if cold_r > hot_r else 'Hot tumors show a higher alteration rate — contrary to H3.'}"
+            f"Pooled CDKN2A deletion rate — cold: **{cold_r:.1f}%**, hot: **{hot_r:.1f}%** "
+            "(confounded by tumor type; not the H3 test)."
         )
+        if _mh["n_strata"] > 0 and not np.isnan(_mh["or"]):
+            st.markdown(
+                f"**H3 test — tumor-type-stratified Mantel-Haenszel:** OR = {_mh['or']:.3f} "
+                f"(95% CI {_mh['ci_low']:.3f}–{_mh['ci_high']:.3f}), p = {_mh['p']:.2e}; cold > hot in "
+                f"{_mh['cold_gt_hot_strata']}/{_mh['n_strata']} tumor types. "
+                f"{'Supports H3.' if _mh['or'] > 1 and _mh['p'] < 0.01 else 'Does not support H3 at α = 0.01.'}"
+            )
         fig_alt = px.bar(
             alt_rates,
-            x="hot_cold", y="pct_altered", color="hot_cold",
+            x="hot_cold", y="pct_deleted", color="hot_cold",
             color_discrete_map={"hot": "#e74c3c", "intermediate": "#f39c12", "cold": "#3498db"},
             category_orders={"hot_cold": ["cold", "intermediate", "hot"]},
-            labels={"pct_altered": "% CDKN2A altered", "hot_cold": ""},
-            title="CDKN2A alteration rate by immune phenotype",
+            labels={"pct_deleted": "% CDKN2A deleted", "hot_cold": ""},
+            title="Pooled CDKN2A deletion rate by immune phenotype (confounded by tumor type)",
         )
         fig_alt.update_layout(showlegend=False)
         st.plotly_chart(fig_alt, use_container_width=True)
@@ -1888,14 +1958,26 @@ elif page == "Summary":
 
     col_sv1, col_sv2 = st.columns(2)
     with col_sv1:
-        st.markdown("**H4 — Per-tumor-type log-rank significance (hot vs cold OS)**")
+        st.markdown("**H4 — 6-group log-rank (immune tertile × p16 high/low)**")
+        try:
+            _h4s = _h4_six_group(df[["tumor_type", "hot_cold", "CDKN2A_expr", "OS", "OS.time_years"]])
+            _o = hyp_stats.h4_ordering_observed(_h4s["medians"])
+            st.markdown(
+                f"Unstratified p = {_h4s['p_unstrat']:.2e}; stratified by tumor type p = {_h4s['p_strat']:.3f}. "
+                f"Median OS cold/p16-low {_h4s['medians'].get('cold / p16-low', float('nan')):.2f} y vs "
+                f"hot/p16-high {_h4s['medians'].get('hot / p16-high', float('nan')):.2f} y — "
+                f"claimed ordering {'observed' if _o else 'NOT observed'}."
+            )
+        except Exception:
+            st.caption("_6-group survival data not available — see notebook 05 §4._")
+        st.markdown("**Exploratory — per-tumor-type 3-group log-rank (not the H4 test)**")
         if "padj" in lr.columns:
             n_sig = (lr["padj"] < 0.05).sum()
             n_tot = len(lr)
             sig_frac = 100 * n_sig / n_tot
             st.markdown(
                 f"{n_sig} / {n_tot} tumor types ({sig_frac:.0f}%) show significantly different OS "
-                f"between hot and cold (padj < 0.05)."
+                f"across immune groups (padj < 0.05)."
             )
             lr_plot = lr.copy()
             lr_plot["significant"] = lr_plot["padj"] < 0.05
@@ -1905,7 +1987,7 @@ elif page == "Summary":
                 color="significant",
                 color_discrete_map={True: "#e74c3c", False: "#95a5a6"},
                 labels={"lr_pval": "Log-rank p-value", "tumor_type": "", "significant": "padj < 0.05"},
-                title="Per-type log-rank p (hot vs cold OS)",
+                title="Per-type log-rank p (3 immune groups, OS)",
                 height=500,
             )
             fig_lr.add_vline(x=0.05, line_dash="dash", line_color="black")
@@ -1989,19 +2071,20 @@ elif page == "Summary":
                     "which does not support H2."
                 )
 
-    if "cdkn2a_altered" in df.columns and "hot_cold" in df.columns:
-        _c = df.loc[df["hot_cold"] == "cold", "cdkn2a_altered"].dropna().mean()
-        _h = df.loc[df["hot_cold"] == "hot",  "cdkn2a_altered"].dropna().mean()
-        if _c > _h:
-            findings.append(
-                f"**CDKN2A alterations are more frequent in cold tumors** ({100*_c:.1f}% vs {100*_h:.1f}% in hot), "
-                "supporting the model that p16 loss reduces SASP and promotes immune exclusion."
-            )
-        else:
-            findings.append(
-                f"**CDKN2A alteration rates do not differ markedly between cold ({100*_c:.1f}%) and hot ({100*_h:.1f}%) tumors**, "
-                "providing weak evidence for H3."
-            )
+    if "cdkn2a_deleted" in df.columns and "hot_cold" in df.columns:
+        _m = hyp_stats.stratified_deletion_test(df)
+        if _m["n_strata"] > 0 and not np.isnan(_m["or"]):
+            if _m["or"] > 1 and _m["p"] < 0.01:
+                findings.append(
+                    f"**CDKN2A deletion is more frequent in cold tumors within tumor types** "
+                    f"(stratified Mantel-Haenszel OR = {_m['or']:.2f}, 95% CI {_m['ci_low']:.2f}–{_m['ci_high']:.2f}, "
+                    f"p = {_m['p']:.1e}; cold > hot in {_m['cold_gt_hot_strata']}/{_m['n_strata']} types), supporting H3. "
+                    f"The pooled rates (cold {_m['pooled_cold_pct']:.1f}% vs hot {_m['pooled_hot_pct']:.1f}%) are confounded by tumor type."
+                )
+            else:
+                findings.append(
+                    f"**H3 not supported by the stratified test** (Mantel-Haenszel OR = {_m['or']:.2f}, p = {_m['p']:.1e})."
+                )
 
     cox_cdkn2a = cox[cox["term"].str.contains("CDKN2A", case=False, na=False)]
     if len(cox_cdkn2a):
@@ -2022,12 +2105,30 @@ elif page == "Summary":
                 f"p = {r['p.value']:.2e}), which is inconsistent with H5."
             )
 
+    try:
+        _h4n = _h4_six_group(df[["tumor_type", "hot_cold", "CDKN2A_expr", "OS", "OS.time_years"]])
+        _ok = (_h4n["p_unstrat"] < 0.01 and _h4n["p_strat"] < 0.01
+               and hyp_stats.h4_ordering_observed(_h4n["medians"]))
+        findings.append(
+            f"**H4 {'supported' if _ok else 'not supported'}:** 6-group log-rank p = {_h4n['p_unstrat']:.1e} "
+            f"unstratified, {_h4n['p_strat']:.3f} stratified by tumor type; the claimed ordering "
+            f"(cold/p16-low worst, hot/p16-high best) is {'' if hyp_stats.h4_ordering_observed(_h4n['medians']) else 'not '}observed."
+        )
+    except Exception:
+        pass
     if "padj" in lr.columns:
         n_sig = (lr["padj"] < 0.05).sum()
         n_tot = len(lr)
         findings.append(
-            f"**Hot vs cold OS differences are significant in {n_sig}/{n_tot} tumor types** (padj < 0.05), "
-            "suggesting immune phenotype is prognostically relevant across cancer contexts."
+            f"Exploratory: immune-group OS differences are significant in {n_sig}/{n_tot} tumor types "
+            "(per-type 3-group log-rank, padj < 0.05); this is not the H4 test."
+        )
+
+    if cox_int is not None and cox_int["term"].str.contains(":", na=False).any():
+        _ir = cox_int[cox_int["term"].str.contains(":", na=False)].iloc[0]
+        findings.append(
+            f"CDKN2A × IFN-γ interaction (Cox): HR = {_ir['estimate']:.3f}, p = {_ir['p.value']:.1e} — "
+            "the CDKN2A effect depends on IFN-γ level (no purity adjustment)."
         )
 
     if findings:
