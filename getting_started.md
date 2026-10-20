@@ -23,8 +23,10 @@ Opens at `http://localhost:8501`. Use the **sidebar** to filter tumor types and 
 | **Survival** | Cox forest plot (HR ± 95% CI), per-tumor-type log-rank table, interactive Kaplan-Meier explorer (endpoint × stratification × follow-up slider) |
 | **Pathway** | Interactive p16/CDK4-6/Rb/E2F pathway diagram with SASP outputs and cancer escape routes |
 | **Figures** | All static PNGs from the pipeline displayed as a gallery |
+| **Hypotheses** | Pre-specified hypothesis tests (H1–H5 and exploratory) with live results |
+| **Summary** | Narrative synthesis of the findings |
 
-The KM explorer in the Survival tab lets you switch between OS / DSS / PFI endpoints and stratify by hot/cold, p16 status, or the 4-group combination — no rerunning notebooks needed.
+The KM explorer in the Survival tab lets you switch between OS / DSS / PFI endpoints and stratify by hot/cold, p16 status, or the 6-group combination — no rerunning notebooks needed.
 
 ---
 
@@ -36,18 +38,18 @@ All plots are written to `figures/` during notebook execution. Key outputs:
 |---|---|---|
 | `ifng_score_distribution.png` | notebook 02 | IFN-γ score histogram with hot/cold split |
 | `hot_fraction_by_tumor_type.png` | notebook 02 | Bar chart of hot fraction per cancer type |
-| `cdkn2a_by_tumor_type.png` | notebook 03 | CDKN2A expression boxplots across 33 types |
+| `cdkn2a_by_tumor_type.png` | notebook 03 | CDKN2A expression boxplots across 32 types |
 | `cdkn2a_vs_ifng_scatter.png` | notebook 04 | Pan-cancer CDKN2A vs IFN-γ scatter with Spearman ρ |
-| `cdkn2a_ifng_corr_by_type.png` | notebook 04 | Per-tumor-type Spearman ρ heatmap |
+| `cdkn2a_ifng_corr_by_type.png` | notebook 04 | Per-tumor-type Spearman ρ bar chart |
 | `spearman_heatmap_pancancer.png` | notebook 04 | Multi-score × IFN-γ correlation heatmap |
-| `sasp_score_hot_cold.png` | notebook 04 | SASP NES violin: hot vs cold (H2) |
+| `sasp_score_hot_cold.png` | notebook 04 | SASP NES histogram: hot / intermediate / cold (H2) |
 | `km_hot_cold.png` | notebook 05 | KM curves: hot vs cold OS |
-| `km_4group.png` | notebook 05 | KM curves: hot/cold × p16-high/low 4-group (H4) |
+| `km_4group.png` | notebook 05 | KM curves: 6 groups (immune tertile × p16-high/low) (H4); `km_4group.png` is a legacy filename |
 | `cox_forest_plot.png` | notebook 05 | Cox HR forest plot with 95% CI (H5) |
 | `fig1_senescence_heatmap.png` | notebook 06 | Composite: senescence score heatmap |
 | `fig2_umap.png` | notebook 06 | UMAP of samples colored by immune/senescence features |
 | `fig3_correlation_matrix.png` | notebook 06 | Correlation matrix across all scores |
-| `fig4_survival_composite.png` | notebook 06 | Four-panel survival composite figure |
+| `fig4_survival_composite.png` | notebook 06 | Montage of all `km_*.png` Kaplan-Meier figures |
 
 Open any PNG directly or view them all at once in the **Figures** tab of the dashboard.
 
